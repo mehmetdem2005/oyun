@@ -3,6 +3,15 @@
 set -x
 id; whoami; echo "HOME=$HOME"
 UE=$(ls -d /home/ue4/UnrealEngine 2>/dev/null || ls -d /opt/UnrealEngine 2>/dev/null); echo "UE=$UE"
+echo "=== InstalledBuild.txt (desteklenen platformlarin otoritesi) ==="
+cat "$UE/Engine/Build/InstalledBuild.txt" 2>/dev/null || echo "InstalledBuild.txt YOK (kaynak derleme gibi davranir)"
+echo "=== Installed platform bilgisi ==="
+find "$UE/Engine/Intermediate" -maxdepth 3 -iname "*Installed*" 2>/dev/null | head
+grep -rn "InstalledPlatform" "$UE/Engine/Config/BaseEngine.ini" 2>/dev/null | head -20
+echo "=== Android motor ikilikleri var mi ==="
+ls "$UE/Engine/Binaries/Android" 2>/dev/null | head || echo "Engine/Binaries/Android YOK"
+ls "$UE/Engine/Intermediate/Build/Android" 2>/dev/null | head -5 || echo "Intermediate/Build/Android YOK"
+ls "$UE/Engine/Plugins/Runtime/AndroidPermission" 2>/dev/null >/dev/null && echo "AndroidPermission eklentisi VAR"
 ls "$UE/Engine" || true
 ls "$UE/Engine/Extras" 2>/dev/null | head -30 || echo "Extras YOK"
 find "$UE" -maxdepth 4 -iname "SetupAndroid*" 2>/dev/null | head
