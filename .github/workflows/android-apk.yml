@@ -1,0 +1,76 @@
+name: Android APK (UE 5.7 bulut derlemesi)
+
+# Tetikleme: elle (Actions sekmesi -> bu workflow -> Run workflow).
+# GEREKSINIM: EPIC_GHCR_TOKEN secret'i (Epic hesabıyla eşlenmiş GitHub PAT,
+# read:packages yetkisi) — kurulum adımları: Docs/bulut-apk-kurulum.md
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Epic container etiketi (ghcr.io/epicgames/unreal-engine)"
+        default: "dev-slim-5.7"
+        required: true
+      config:
+        description: "Derleme yapılandırması"
+        default: "Development"
+        required: true
+        type: choice
+        options: [Development, Shipping]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      # GitHub runner'ında ~25-30 GB boş yer var; UE imajı için her bayt lazım.
+      - name: Disk alanı aç (ön kurulu yığınları sil)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /usr/share/swift \
+                      /usr/local/share/boost /usr/local/lib/node_modules
+          sudo docker system prune -af || true
+          df -h /
+
+      # /mnt'te ~60 GB ek alan var; docker imaj deposunu oraya taşı.
+      - name: Docker veri kökünü /mnt'e taşı
+        run: |
+          sudo systemctl stop docker
+          sudo mkdir -p /mnt/docker
+          echo '{"data-root":"/mnt/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker
+          df -h / /mnt
+
+      - name: Kodu indir
+        uses: actions/checkout@v4
+
+      - name: Epic container kaydına giriş
+        run: echo "${{ secrets.EPIC_GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+
+      - name: UE imajını çek
+        run: docker pull "ghcr.io/epicgames/unreal-engine:${{ inputs.image_tag }}"
+
+      - name: APK derle (container içinde)
+        run: |
+          docker run --rm -v "$PWD:/proje" -w /proje \
+            -e CLIENT_CONFIG="${{ inputs.config }}" \
+            "ghcr.io/epicgames/unreal-engine:${{ inputs.image_tag }}" \
+            bash /proje/.github/scripts/build-android.sh
+
+      - name: APK artifact olarak yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KayipKrallik-Android-${{ inputs.config }}
+          path: |
+            Paket/**/*.apk
+            Paket/**/*.aab
+          if-no-files-found: warn
+
+      # Hata ayıklama için: cook/paket loglarını da sakla
+      - name: Logları yükle (hata ayıklama)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: derleme-loglari
+          path: Saved/Logs/**
+          if-no-files-found: ignore
