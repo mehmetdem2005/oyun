@@ -1,0 +1,6 @@
+Name,ResultItem,ResultCount,Cost1Item,Cost1Count,Cost2Item,Cost2Count
+campfire,campfire,1,wood,5,stone,3
+axe,axe,1,wood,3,stone,2
+wall,wall,1,wood,4,,0
+door,door,1,wood,6,stone,1
+ballista,ballista,1,wood,8,stone,4

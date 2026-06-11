@@ -1,0 +1,19 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.7",
+	"Category": "Game",
+	"Description": "Kayip Krallik - sovalye, kale insa, gece kusatmasi. Faz 0 cekirdek.",
+	"Modules": [
+		{
+			"Name": "KayipKrallik",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [ "Engine", "GameplayAbilities" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "GameplayAbilities", "Enabled": true },
+		{ "Name": "EnhancedInput", "Enabled": true },
+		{ "Name": "ModelingToolsEditorMode", "Enabled": false }
+	]
+}

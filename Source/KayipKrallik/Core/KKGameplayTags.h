@@ -1,0 +1,26 @@
+// KKGameplayTags.h — Oyunun tüm yerel GameplayTag'leri (mesaj otobüsü kanalları). [TKT-F0-002]
+#pragma once
+
+#include "NativeGameplayTags.h"
+
+namespace KKTags
+{
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Time_DayChanged);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Time_NightStarted);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Time_DawnStarted);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Player_Damaged);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Player_Died);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Player_Respawned);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Resource_Harvested);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Inventory_Changed);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Enemy_Killed);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Save_Completed);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Build_Placed);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Build_Destroyed);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Game_HeartDestroyed);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Game_Victory);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Villager_Rescued);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Villager_Died);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Critter_Killed);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Night_BigSiege);
+}
