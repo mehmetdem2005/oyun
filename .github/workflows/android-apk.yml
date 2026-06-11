@@ -43,6 +43,11 @@ jobs:
       - name: Kodu indir
         uses: actions/checkout@v4
 
+      # Container ue4 (uid 1000) ile koşar, depo runner (uid 1001) sahipli —
+      # yazma izni açılmazsa mkdir/Content ve Paket çıktısı reddedilir (run 27379780722 hatası).
+      - name: Depoya yazma izni aç
+        run: sudo chmod -R a+rwX "$PWD"
+
       - name: Epic container kaydına giriş
         run: echo "${{ secrets.EPIC_GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
 
