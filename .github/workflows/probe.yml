@@ -25,6 +25,9 @@ jobs:
           echo '{"data-root":"/mnt/docker"}' | sudo tee /etc/docker/daemon.json
           sudo systemctl start docker
 
+      - name: Kodu indir
+        uses: actions/checkout@v4
+
       - name: Giriş + imaj çek
         run: |
           echo "${{ secrets.EPIC_GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
@@ -32,24 +35,6 @@ jobs:
 
       - name: İmaj içini keşfet
         run: |
-          docker run --rm "ghcr.io/epicgames/unreal-engine:${{ inputs.image_tag }}" bash -c '
-            set -x
-            id; whoami; echo HOME=$HOME
-            UE=$(ls -d /home/ue4/UnrealEngine 2>/dev/null || ls -d /opt/UnrealEngine 2>/dev/null); echo "UE=$UE"
-            ls "$UE/Engine" || true
-            ls "$UE/Engine/Extras" 2>/dev/null | head -30 || echo "Extras YOK"
-            find "$UE" -maxdepth 4 -iname "SetupAndroid*" 2>/dev/null | head
-            env | grep -iE "android|java|ndk|sdk" || echo "ilgili env yok"
-            ls /home/ue4 2>/dev/null; ls /opt 2>/dev/null
-            command -v sdkmanager javac java adb || echo "java/android araclari PATH'te yok"
-            echo "=== UBT Android kaynaklari ==="
-            ls "$UE/Engine/Source/Programs/UnrealBuildTool/Platform/Android/" 2>/dev/null | head -20 || echo "UBT Android kaynagi YOK"
-            echo "=== UBT istedigi surumler ==="
-            grep -rn -E "r[0-9]{2}[a-z]?\"|MinimumSDKLevel|BuildToolsVersion|PlatformsDir|android-[0-9]+" \
-              "$UE/Engine/Source/Programs/UnrealBuildTool/Platform/Android/AndroidPlatformSDK.Versioning.cs" 2>/dev/null | head -30 || true
-            grep -rn -E "\"r[0-9]+[a-z]?\"" "$UE/Engine/Source/Programs/UnrealBuildTool/Platform/Android/"*.cs 2>/dev/null | head -10 || true
-            echo "=== Android_Etc tooltchain dosyalari ==="
-            find "$UE/Engine" -maxdepth 5 -iname "*.cs" -path "*Android*" 2>/dev/null | head -20
-            df -h / /home 2>/dev/null || true
-            true
-          '
+          docker run --rm -v "$PWD:/proje:ro" \
+            "ghcr.io/epicgames/unreal-engine:${{ inputs.image_tag }}" \
+            bash /proje/.github/scripts/probe.sh
