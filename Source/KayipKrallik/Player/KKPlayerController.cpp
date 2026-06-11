@@ -2,6 +2,7 @@
 #include "Player/KKPlayerController.h"
 #include "Player/KKPlayerCharacter.h"
 #include "KayipKrallik.h"
+#include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"

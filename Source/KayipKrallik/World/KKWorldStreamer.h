@@ -11,6 +11,7 @@
 
 class UHierarchicalInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
+class UStaticMesh;
 class AKKResourceNode;
 class AKKCampfire;
 

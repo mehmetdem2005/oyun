@@ -79,8 +79,8 @@ protected:
 	void Multicast_HurtFX_Implementation();
 	UFUNCTION(NetMulticast, Unreliable) void Multicast_EatFX();
 	void Multicast_EatFX_Implementation();
-	UFUNCTION(NetMulticast, Reliable)   void Multicast_DeathFX(bool bDead);
-	void Multicast_DeathFX_Implementation(bool bDead);
+	UFUNCTION(NetMulticast, Reliable)   void Multicast_DeathFX(bool bNowDead);
+	void Multicast_DeathFX_Implementation(bool bNowDead);
 
 	void BuildVisual();
 	AKKResourceNode* FindNodeInRange(float Range) const;

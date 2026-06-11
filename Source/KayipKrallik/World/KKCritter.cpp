@@ -18,18 +18,18 @@
 
 namespace
 {
-	const TCHAR* CubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
-	const TCHAR* SphereM = TEXT("/Engine/BasicShapes/Sphere.Sphere");
-	const TCHAR* BaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+	const TCHAR* CritterCubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
+	const TCHAR* CritterSphereM = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+	const TCHAR* CritterBaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 
-	UStaticMeshComponent* Part(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
+	UStaticMeshComponent* CritterPart(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
 	                           const FVector& Loc, const FVector& Scl, const FRotator& Rot = FRotator::ZeroRotator)
 	{
 		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(O);
 		C->SetupAttachment(P);
 		C->RegisterComponent();
 		if (UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, Mesh)) C->SetStaticMesh(M);
-		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, BaseMat))
+		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, CritterBaseMat))
 		{
 			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(B, O);
 			MID->SetVectorParameterValue(TEXT("Color"), Col);
@@ -47,6 +47,7 @@ AKKCritter::AKKCritter()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; // AAIController possess -> AddMovementInput çalışır
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0, 720, 0);
 	bUseControllerRotationYaw = false;
@@ -95,27 +96,27 @@ void AKKCritter::BuildVisual()
 	{
 		const FLinearColor Fur  = KKPalette::Hex(TEXT("a8b0bd")); // taş grisi kürk
 		const FLinearColor Tail = KKPalette::Hex(TEXT("fff1a8")); // alev kremi = pamuk kuyruk
-		Body = Part(this, GetCapsuleComponent(), SphereM, Fur, FVector(0, 0, -2), FVector(0.22f, 0.18f, 0.16f));
-		Part(this, Body, SphereM, Fur, FVector(38, 0, 22), FVector(0.55f));                       // kafa (göreli)
-		Part(this, Body, CubeM,  Fur, FVector(34, -10, 58), FVector(0.10f, 0.16f, 0.55f), FRotator(12, 0, -8));  // kulak L
-		Part(this, Body, CubeM,  Fur, FVector(34,  10, 58), FVector(0.10f, 0.16f, 0.55f), FRotator(12, 0,  8));  // kulak R
-		Part(this, Body, SphereM, Tail, FVector(-46, 0, 6), FVector(0.30f));                      // kuyruk
+		Body = CritterPart(this, GetCapsuleComponent(), CritterSphereM, Fur, FVector(0, 0, -2), FVector(0.22f, 0.18f, 0.16f));
+		CritterPart(this, Body, CritterSphereM, Fur, FVector(38, 0, 22), FVector(0.55f));                       // kafa (göreli)
+		CritterPart(this, Body, CritterCubeM,  Fur, FVector(34, -10, 58), FVector(0.10f, 0.16f, 0.55f), FRotator(12, 0, -8));  // kulak L
+		CritterPart(this, Body, CritterCubeM,  Fur, FVector(34,  10, 58), FVector(0.10f, 0.16f, 0.55f), FRotator(12, 0,  8));  // kulak R
+		CritterPart(this, Body, CritterSphereM, Tail, FVector(-46, 0, 6), FVector(0.30f));                      // kuyruk
 	}
 	else
 	{
 		const FLinearColor Hide = KKPalette::Hex(TEXT("8a5a32")); // kapı paneli kahvesi = geyik postu
 		const FLinearColor Leg  = KKPalette::Hex(TEXT("6e4a2a"));
 		const FLinearColor Horn = KKPalette::Hex(TEXT("e6d28a")); // kum sarısı = kemik boynuz
-		Body = Part(this, GetCapsuleComponent(), CubeM, Hide, FVector(0, 0, 6), FVector(0.52f, 0.26f, 0.30f));
-		Part(this, GetCapsuleComponent(), CubeM, Hide, FVector(30, 0, 30), FVector(0.16f, 0.14f, 0.34f), FRotator(-24, 0, 0)); // boyun
-		Part(this, GetCapsuleComponent(), CubeM, Hide, FVector(42, 0, 48), FVector(0.20f, 0.13f, 0.13f));                       // kafa
-		Part(this, GetCapsuleComponent(), CubeM, Horn, FVector(40, -8, 64), FVector(0.05f, 0.05f, 0.30f), FRotator(0, 0, -28)); // boynuz L
-		Part(this, GetCapsuleComponent(), CubeM, Horn, FVector(40,  8, 64), FVector(0.05f, 0.05f, 0.30f), FRotator(0, 0,  28)); // boynuz R
+		Body = CritterPart(this, GetCapsuleComponent(), CritterCubeM, Hide, FVector(0, 0, 6), FVector(0.52f, 0.26f, 0.30f));
+		CritterPart(this, GetCapsuleComponent(), CritterCubeM, Hide, FVector(30, 0, 30), FVector(0.16f, 0.14f, 0.34f), FRotator(-24, 0, 0)); // boyun
+		CritterPart(this, GetCapsuleComponent(), CritterCubeM, Hide, FVector(42, 0, 48), FVector(0.20f, 0.13f, 0.13f));                       // kafa
+		CritterPart(this, GetCapsuleComponent(), CritterCubeM, Horn, FVector(40, -8, 64), FVector(0.05f, 0.05f, 0.30f), FRotator(0, 0, -28)); // boynuz L
+		CritterPart(this, GetCapsuleComponent(), CritterCubeM, Horn, FVector(40,  8, 64), FVector(0.05f, 0.05f, 0.30f), FRotator(0, 0,  28)); // boynuz R
 		for (int32 i = 0; i < 4; ++i) // bacaklar
 		{
 			const float X = (i < 2) ? 20.f : -20.f;
 			const float Y = (i & 1) ? 10.f : -10.f;
-			Part(this, GetCapsuleComponent(), CubeM, Leg, FVector(X, Y, -28), FVector(0.06f, 0.06f, 0.42f));
+			CritterPart(this, GetCapsuleComponent(), CritterCubeM, Leg, FVector(X, Y, -28), FVector(0.06f, 0.06f, 0.42f));
 		}
 	}
 }

@@ -5,6 +5,8 @@
 #include "UObject/Interface.h"
 #include "KKDamageable.generated.h"
 
+class AActor;
+
 UINTERFACE(MinimalAPI)
 class UKKDamageable : public UInterface
 {

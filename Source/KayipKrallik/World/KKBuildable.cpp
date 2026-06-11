@@ -14,17 +14,17 @@
 
 namespace
 {
-	const TCHAR* CubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
-	const TCHAR* BaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+	const TCHAR* BuildCubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
+	const TCHAR* BuildBaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 
-	UStaticMeshComponent* AddPart(AActor* Owner, USceneComponent* Parent, const FLinearColor& Color,
+	UStaticMeshComponent* BuildAddPart(AActor* Owner, USceneComponent* Parent, const FLinearColor& Color,
 	                              const FVector& RelLoc, const FVector& Scale, bool bCollide)
 	{
 		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(Owner);
 		C->SetupAttachment(Parent);
 		C->RegisterComponent();
-		if (UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, CubeM)) C->SetStaticMesh(M);
-		if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, BaseMat))
+		if (UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, BuildCubeM)) C->SetStaticMesh(M);
+		if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, BuildBaseMat))
 		{
 			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Base, Owner);
 			MID->SetVectorParameterValue(TEXT("Color"), Color);
@@ -68,6 +68,12 @@ void AKKBuildable::InitBuild(EKKBuildType InType, FIntPoint InTile, const FVecto
 	HP   = MaxHPFor(InType);
 	SetActorLocation(WorldLoc);
 	BuildVisual();
+	// Sunucu ızgara kaydı BURADA: BeginPlay spawn anında koşar ve o anda Tile henüz
+	// atanmamıştır — orada kaydolmak her yapıyı (0,0) anahtarına yazardı.
+	if (UKKBuildGridSubsystem* Grid = GetWorld() ? GetWorld()->GetSubsystem<UKKBuildGridSubsystem>() : nullptr)
+	{
+		Grid->RegisterLocal(this);
+	}
 	FlushNetDormancy(); // ilk replikasyonu garanti et
 }
 
@@ -81,10 +87,14 @@ void AKKBuildable::BeginPlay()
 		BuildVisual();
 	}
 
-	// Her makinede yerel ızgaraya kaydol — istemci hayalet geçerliliği buradan okur.
-	if (UKKBuildGridSubsystem* Grid = GetWorld() ? GetWorld()->GetSubsystem<UKKBuildGridSubsystem>() : nullptr)
+	// İstemcide yerel ızgaraya kaydol (ilk replikasyon BeginPlay'den önce gelir, Tile geçerli) —
+	// hayalet geçerliliği buradan okur. Sunucuda Type burada henüz None'dır; kayıt InitBuild'de yapılır.
+	if (Type != EKKBuildType::None)
 	{
-		Grid->RegisterLocal(this);
+		if (UKKBuildGridSubsystem* Grid = GetWorld() ? GetWorld()->GetSubsystem<UKKBuildGridSubsystem>() : nullptr)
+		{
+			Grid->RegisterLocal(this);
+		}
 	}
 
 	// Yerleştirme sesi: spawn anı = yerleştirme anı (sunucu + tüm istemciler duyar).
@@ -129,9 +139,9 @@ void AKKBuildable::BuildVisual()
 	{
 		// İki sıra taş: alt koyu, üst açık ve hafif içerlek — SANAT-YONU "blok + tek renk" dili.
 		// Karo 100 uu; eksen hizalı (duvarlar çizgi gibi okunmalı, jitter YOK).
-		WallBase = AddPart(this, GetRootComponent(), KKPalette::Hex(TEXT("7e8694")),
+		WallBase = BuildAddPart(this, GetRootComponent(), KKPalette::Hex(TEXT("7e8694")),
 		                   FVector(0, 0, 65),  FVector(1.00f, 1.00f, 1.30f), true);
-		WallTop  = AddPart(this, GetRootComponent(), KKPalette::Hex(TEXT("a8b0bd")),
+		WallTop  = BuildAddPart(this, GetRootComponent(), KKPalette::Hex(TEXT("a8b0bd")),
 		                   FVector(0, 0, 175), FVector(0.92f, 0.92f, 0.90f), true);
 	}
 	else if (Type == EKKBuildType::Door)
@@ -140,9 +150,9 @@ void AKKBuildable::BuildVisual()
 		const FLinearColor Wood  = KKPalette::Hex(TEXT("6e4a2a"));
 		const FLinearColor Panel = KKPalette::Hex(TEXT("8a5a32"));
 
-		PostL  = AddPart(this, GetRootComponent(), Wood, FVector(0, -46, 105), FVector(0.16f, 0.16f, 2.10f), true);
-		PostR  = AddPart(this, GetRootComponent(), Wood, FVector(0,  46, 105), FVector(0.16f, 0.16f, 2.10f), true);
-		Lintel = AddPart(this, GetRootComponent(), Wood, FVector(0,   0, 218), FVector(0.18f, 1.04f, 0.16f), true);
+		PostL  = BuildAddPart(this, GetRootComponent(), Wood, FVector(0, -46, 105), FVector(0.16f, 0.16f, 2.10f), true);
+		PostR  = BuildAddPart(this, GetRootComponent(), Wood, FVector(0,  46, 105), FVector(0.16f, 0.16f, 2.10f), true);
+		Lintel = BuildAddPart(this, GetRootComponent(), Wood, FVector(0,   0, 218), FVector(0.18f, 1.04f, 0.16f), true);
 
 		Hinge = NewObject<USceneComponent>(this);
 		Hinge->SetupAttachment(GetRootComponent());
@@ -151,7 +161,7 @@ void AKKBuildable::BuildVisual()
 		AddInstanceComponent(Hinge);
 
 		// Panel menteşeden Y+ yönüne uzanır: pivotu kenarda tutmak için yerel ofset = yarı genişlik.
-		DoorPanel = AddPart(this, Hinge, Panel, FVector(0, 38, 0), FVector(0.12f, 0.72f, 1.80f), true);
+		DoorPanel = BuildAddPart(this, Hinge, Panel, FVector(0, 38, 0), FVector(0.12f, 0.72f, 1.80f), true);
 
 		ApplyDoorState(/*bPlaySound=*/false);
 	}

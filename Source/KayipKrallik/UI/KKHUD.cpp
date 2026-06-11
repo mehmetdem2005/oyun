@@ -8,7 +8,7 @@ void AKKHUD::BeginPlay()
 	Super::BeginPlay();
 	if (PlayerOwner && PlayerOwner->IsLocalController())
 	{
-		Widget = CreateWidget<UKKHUDWidget>(PlayerOwner, UKKHUDWidget::StaticClass());
+		Widget = CreateWidget<UKKHUDWidget>(PlayerOwner.Get(), UKKHUDWidget::StaticClass());
 		if (Widget) Widget->AddToViewport();
 	}
 }

@@ -61,7 +61,7 @@ AKKBuildable* UKKBuildGridSubsystem::ServerPlace(EKKBuildType Type, int32 TX, in
 	if (!B) return nullptr;
 
 	B->InitBuild(Type, FIntPoint(TX, TY), Gen->TileToWorld(TX, TY, 0.f));
-	// RegisterLocal BeginPlay'de zaten koştu; harita güncel.
+	// RegisterLocal artık InitBuild içinde koşar (Tile atandıktan sonra); harita güncel.
 
 	if (UKKMessageBusSubsystem* Bus = UKKMessageBusSubsystem::Get(W))
 	{

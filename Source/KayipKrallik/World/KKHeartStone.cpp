@@ -15,11 +15,11 @@
 
 namespace
 {
-	const TCHAR* CubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
-	const TCHAR* CylM    = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
-	const TCHAR* BaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+	const TCHAR* HeartCubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
+	const TCHAR* HeartCylM    = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+	const TCHAR* HeartBaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 
-	UStaticMeshComponent* AddPart(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
+	UStaticMeshComponent* HeartAddPart(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
 	                              const FVector& Loc, const FVector& Scl, const FRotator& Rot,
 	                              UMaterialInstanceDynamic** OutMID = nullptr)
 	{
@@ -27,7 +27,7 @@ namespace
 		C->SetupAttachment(P);
 		C->RegisterComponent();
 		if (UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, Mesh)) C->SetStaticMesh(M);
-		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, BaseMat))
+		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, HeartBaseMat))
 		{
 			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(B, O);
 			MID->SetVectorParameterValue(TEXT("Color"), Col);
@@ -78,15 +78,15 @@ void AKKHeartStone::BuildVisual()
 	for (int32 i = 0; i < 6; ++i) // altıgen taş halka
 	{
 		const float A = i * PI / 3.f;
-		AddPart(this, GetRootComponent(), CubeM, (i % 2) ? Light : Stone,
+		HeartAddPart(this, GetRootComponent(), HeartCubeM, (i % 2) ? Light : Stone,
 		        FVector(FMath::Cos(A) * 58.f, FMath::Sin(A) * 58.f, 14.f),
 		        FVector(0.26f, 0.26f, 0.28f), FRotator(0, FMath::RadiansToDegrees(A), 0));
 	}
-	Pedestal = AddPart(this, GetRootComponent(), CylM, Stone,
+	Pedestal = HeartAddPart(this, GetRootComponent(), HeartCylM, Stone,
 	                   FVector(0, 0, 55), FVector(0.34f, 0.34f, 1.10f), FRotator::ZeroRotator);
 
 	// Çekirdek: 45° yatırılmış küp = elmas siluet; süzülür ve döner.
-	Gem = AddPart(this, GetRootComponent(), CubeM, Gold,
+	Gem = HeartAddPart(this, GetRootComponent(), HeartCubeM, Gold,
 	              GemBaseLoc, FVector(0.42f), FRotator(45.f, 0.f, 45.f), &GemMID);
 	Gem->SetCollisionEnabled(ECollisionEnabled::NoCollision); // vuruşlar kaideye; çekirdek kutsal
 

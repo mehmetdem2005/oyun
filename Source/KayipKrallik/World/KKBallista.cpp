@@ -13,18 +13,18 @@
 
 namespace
 {
-	const TCHAR* CubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
-	const TCHAR* CylM    = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
-	const TCHAR* BaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+	const TCHAR* BallistaCubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
+	const TCHAR* BallistaCylM    = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+	const TCHAR* BallistaBaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 
-	UStaticMeshComponent* Part(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
+	UStaticMeshComponent* BallistaPart(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
 	                           const FVector& Loc, const FVector& Scl, const FRotator& Rot, bool bCollide)
 	{
 		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(O);
 		C->SetupAttachment(P);
 		C->RegisterComponent();
 		if (UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, Mesh)) C->SetStaticMesh(M);
-		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, BaseMat))
+		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, BallistaBaseMat))
 		{
 			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(B, O);
 			MID->SetVectorParameterValue(TEXT("Color"), Col);
@@ -52,8 +52,8 @@ void AKKBallista::BuildVisual()
 	const FLinearColor Steel = KKPalette::Hex(TEXT("a8b0bd"));
 
 	// Kaide: çapraz ahşap ayaklar + platform — duvarla aynı karo dilinde, yapı GÖVDESİ çarpışır.
-	Part(this, GetRootComponent(), CubeM, Wood,  FVector(0, 0, 32), FVector(0.82f, 0.82f, 0.64f), FRotator::ZeroRotator, true);
-	Part(this, GetRootComponent(), CubeM, Panel, FVector(0, 0, 68), FVector(0.58f, 0.58f, 0.10f), FRotator(0, 45, 0), false);
+	BallistaPart(this, GetRootComponent(), BallistaCubeM, Wood,  FVector(0, 0, 32), FVector(0.82f, 0.82f, 0.64f), FRotator::ZeroRotator, true);
+	BallistaPart(this, GetRootComponent(), BallistaCubeM, Panel, FVector(0, 0, 68), FVector(0.58f, 0.58f, 0.10f), FRotator(0, 45, 0), false);
 
 	// Nişan pivotu: yatay dönüş burada — kol + cıvata buna bağlı.
 	Pivot = NewObject<USceneComponent>(this);
@@ -63,12 +63,12 @@ void AKKBallista::BuildVisual()
 	AddInstanceComponent(Pivot);
 
 	// Gergi kolu: hafif yukarı açılı uzun kiriş; ucu = namlu (X+ ileri).
-	Arm = Part(this, Pivot, CubeM, Wood, FVector(22, 0, 10), FVector(0.78f, 0.10f, 0.10f), FRotator(-8, 0, 0), false);
+	Arm = BallistaPart(this, Pivot, BallistaCubeM, Wood, FVector(22, 0, 10), FVector(0.78f, 0.10f, 0.10f), FRotator(-8, 0, 0), false);
 	// Yay kanatları: kısa çapraz çubuklar — siluet "balista" diye okunsun.
-	Part(this, Pivot, CylM, Panel, FVector(2, 0, 12), FVector(0.06f, 0.06f, 0.62f), FRotator(90, 0, 90), false);
+	BallistaPart(this, Pivot, BallistaCylM, Panel, FVector(2, 0, 12), FVector(0.06f, 0.06f, 0.62f), FRotator(90, 0, 90), false);
 
 	// Tek cıvata: yeniden kullanılır, boşta gizli — çelik gövde.
-	BoltMesh = Part(this, GetRootComponent(), CubeM, Steel, FVector::ZeroVector, FVector(0.42f, 0.045f, 0.045f), FRotator::ZeroRotator, false);
+	BoltMesh = BallistaPart(this, GetRootComponent(), BallistaCubeM, Steel, FVector::ZeroVector, FVector(0.42f, 0.045f, 0.045f), FRotator::ZeroRotator, false);
 	BoltMesh->SetUsingAbsoluteLocation(true);
 	BoltMesh->SetUsingAbsoluteRotation(true);
 	BoltMesh->SetVisibility(false);

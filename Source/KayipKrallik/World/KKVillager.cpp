@@ -24,18 +24,18 @@
 
 namespace
 {
-	const TCHAR* CubeM    = TEXT("/Engine/BasicShapes/Cube.Cube");
-	const TCHAR* SphereM  = TEXT("/Engine/BasicShapes/Sphere.Sphere");
-	const TCHAR* BaseMat  = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+	const TCHAR* VillagerCubeM    = TEXT("/Engine/BasicShapes/Cube.Cube");
+	const TCHAR* VillagerSphereM  = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+	const TCHAR* VillagerBaseMat  = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 
-	UStaticMeshComponent* Part(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
+	UStaticMeshComponent* VillagerPart(AActor* O, USceneComponent* P, const TCHAR* Mesh, const FLinearColor& Col,
 	                           const FVector& Loc, const FVector& Scl, const FRotator& Rot = FRotator::ZeroRotator)
 	{
 		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(O);
 		C->SetupAttachment(P);
 		C->RegisterComponent();
 		if (UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, Mesh)) C->SetStaticMesh(M);
-		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, BaseMat))
+		if (UMaterialInterface* B = LoadObject<UMaterialInterface>(nullptr, VillagerBaseMat))
 		{
 			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(B, O);
 			MID->SetVectorParameterValue(TEXT("Color"), Col);
@@ -53,6 +53,7 @@ AKKVillager::AKKVillager()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned; // AAIController possess -> AddMovementInput çalışır
 
 	GetCapsuleComponent()->SetCapsuleSize(26.f, 56.f);
 	GetCharacterMovement()->MaxWalkSpeed = 300.f;            // oyuncudan yavaş: koruman gereken biri
@@ -94,12 +95,12 @@ void AKKVillager::BuildVisual()
 	const FLinearColor Hair  = KKPalette::Hex(TEXT("6e4a2a"));
 	const FLinearColor Wood  = KKPalette::Hex(TEXT("6e4a2a"));
 
-	Part(this, GetCapsuleComponent(), CubeM,   Tunic, FVector(0, 0, -14), FVector(0.34f, 0.30f, 0.52f));
-	Part(this, GetCapsuleComponent(), SphereM, Skin,  FVector(0, 0, 30),  FVector(0.30f));
-	Part(this, GetCapsuleComponent(), SphereM, Hair,  FVector(-3, 0, 38), FVector(0.30f, 0.30f, 0.18f)); // saç kepi
+	VillagerPart(this, GetCapsuleComponent(), VillagerCubeM,   Tunic, FVector(0, 0, -14), FVector(0.34f, 0.30f, 0.52f));
+	VillagerPart(this, GetCapsuleComponent(), VillagerSphereM, Skin,  FVector(0, 0, 30),  FVector(0.30f));
+	VillagerPart(this, GetCapsuleComponent(), VillagerSphereM, Hair,  FVector(-3, 0, 38), FVector(0.30f, 0.30f, 0.18f)); // saç kepi
 
 	// Taşıma görseli: omuzda kütük — bCarrying ile görünür.
-	CarryLog = Part(this, GetCapsuleComponent(), CubeM, Wood, FVector(6, -16, 22), FVector(0.42f, 0.10f, 0.10f), FRotator(0, 0, 18));
+	CarryLog = VillagerPart(this, GetCapsuleComponent(), VillagerCubeM, Wood, FVector(6, -16, 22), FVector(0.42f, 0.10f, 0.10f), FRotator(0, 0, 18));
 	CarryLog->SetVisibility(false);
 
 	// Kafes: 4 köşe dikme + 4 üst kiriş — Ayla içinde doğar, E kırar.
@@ -108,12 +109,12 @@ void AKKVillager::BuildVisual()
 	{
 		const float SX = (i & 1) ? R : -R;
 		const float SY = (i & 2) ? R : -R;
-		CageParts.Add(Part(this, GetCapsuleComponent(), CubeM, Wood, FVector(SX, SY, 0), FVector(0.08f, 0.08f, 1.30f)));
+		CageParts.Add(VillagerPart(this, GetCapsuleComponent(), VillagerCubeM, Wood, FVector(SX, SY, 0), FVector(0.08f, 0.08f, 1.30f)));
 	}
-	CageParts.Add(Part(this, GetCapsuleComponent(), CubeM, Wood, FVector(0,  R, 58), FVector(0.92f, 0.08f, 0.08f)));
-	CageParts.Add(Part(this, GetCapsuleComponent(), CubeM, Wood, FVector(0, -R, 58), FVector(0.92f, 0.08f, 0.08f)));
-	CageParts.Add(Part(this, GetCapsuleComponent(), CubeM, Wood, FVector( R, 0, 58), FVector(0.08f, 0.92f, 0.08f)));
-	CageParts.Add(Part(this, GetCapsuleComponent(), CubeM, Wood, FVector(-R, 0, 58), FVector(0.08f, 0.92f, 0.08f)));
+	CageParts.Add(VillagerPart(this, GetCapsuleComponent(), VillagerCubeM, Wood, FVector(0,  R, 58), FVector(0.92f, 0.08f, 0.08f)));
+	CageParts.Add(VillagerPart(this, GetCapsuleComponent(), VillagerCubeM, Wood, FVector(0, -R, 58), FVector(0.92f, 0.08f, 0.08f)));
+	CageParts.Add(VillagerPart(this, GetCapsuleComponent(), VillagerCubeM, Wood, FVector( R, 0, 58), FVector(0.08f, 0.92f, 0.08f)));
+	CageParts.Add(VillagerPart(this, GetCapsuleComponent(), VillagerCubeM, Wood, FVector(-R, 0, 58), FVector(0.08f, 0.92f, 0.08f)));
 }
 
 void AKKVillager::ApplyCageVisual()

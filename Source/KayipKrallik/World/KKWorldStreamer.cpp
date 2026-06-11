@@ -7,6 +7,7 @@
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 
 AKKWorldStreamer::AKKWorldStreamer()

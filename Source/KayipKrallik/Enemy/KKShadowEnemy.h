@@ -28,6 +28,10 @@ public:
 	/** Şafak emri (spawner çağırır, sunucu). */
 	void ForceDawnDeath();
 
+	/** Sunucu: kurbanın envanterini sırtlan. Gölge artık YÜRÜYEN GANİMET — öldür, geri al.
+	 *  Kurbanın ölüm yolu (AKKPlayerCharacter::Die) dışarıdan çağırır — public kalmalı. */
+	void AddStolenLoot(const TMap<FName, int32>& In);
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -47,9 +51,6 @@ protected:
 
 	void BuildVisual();
 	AActor* FindTarget() const; // en yakın canlı: oyuncu(lar) ∪ Kalp Taşı
-
-	/** Sunucu: kurbanın envanterini sırtlan. Gölge artık YÜRÜYEN GANİMET — öldür, geri al. */
-	void AddStolenLoot(const TMap<FName, int32>& In);
 
 	float HP = 30.f;
 	UPROPERTY(ReplicatedUsing = OnRep_HasLoot) bool bHasLoot = false; // istemciler altın taşı görsün

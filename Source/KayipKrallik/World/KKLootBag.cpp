@@ -30,6 +30,13 @@ void AKKLootBag::InitLoot(const TMap<FName, int32>& In)
 	check(HasAuthority());
 	Loot = In;
 	if (Loot.Num() == 0) { Destroy(); return; } // boş kese dünyayı kirletmez
+
+	// İlk bindirme taraması BURADA: BeginPlay spawn anında koşar ve o anda Loot henüz boştur —
+	// orada taramak, üstünde duran oyuncuya BOŞ keseyi verip asıl ganimeti buharlaştırırdı.
+	// "Gölgeyi tepende öldürdün" senaryosu yine çalışır.
+	TArray<AActor*> Already;
+	Touch->GetOverlappingActors(Already, AKKPlayerCharacter::StaticClass());
+	for (AActor* A : Already) { OnTouch(Touch, A, nullptr, 0, false, FHitResult()); if (bTaken) break; }
 }
 
 void AKKLootBag::BeginPlay()
@@ -39,10 +46,6 @@ void AKKLootBag::BeginPlay()
 	if (HasAuthority())
 	{
 		Touch->OnComponentBeginOverlap.AddDynamic(this, &AKKLootBag::OnTouch);
-		// Doğarken biri üstünde duruyorsa da çalışsın (gölgeyi tepende öldürdün senaryosu):
-		TArray<AActor*> Already;
-		Touch->GetOverlappingActors(Already, AKKPlayerCharacter::StaticClass());
-		for (AActor* A : Already) { OnTouch(Touch, A, nullptr, 0, false, FHitResult()); if (bTaken) break; }
 	}
 }
 

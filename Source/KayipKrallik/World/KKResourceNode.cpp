@@ -10,14 +10,15 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 
 namespace
 {
-	const TCHAR* CubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
-	const TCHAR* SphereM = TEXT("/Engine/BasicShapes/Sphere.Sphere");
-	const TCHAR* ConeM   = TEXT("/Engine/BasicShapes/Cone.Cone");
-	const TCHAR* CylM    = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
-	const TCHAR* BaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+	const TCHAR* ResNodeCubeM   = TEXT("/Engine/BasicShapes/Cube.Cube");
+	const TCHAR* ResNodeSphereM = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+	const TCHAR* ResNodeConeM   = TEXT("/Engine/BasicShapes/Cone.Cone");
+	const TCHAR* ResNodeCylM    = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+	const TCHAR* ResNodeBaseMat = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 }
 
 AKKResourceNode::AKKResourceNode()
@@ -81,7 +82,7 @@ UStaticMeshComponent* AKKResourceNode::AddPart(const TCHAR* MeshPath, const FLin
 	C->SetupAttachment(Root);
 	C->RegisterComponent();
 	if (UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, MeshPath)) C->SetStaticMesh(M);
-	if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, BaseMat))
+	if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, ResNodeBaseMat))
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Base, this);
 		MID->SetVectorParameterValue(TEXT("Color"), Color);
@@ -112,40 +113,40 @@ void AKKResourceNode::BuildVisual()
 	if (Type == EKKResource::Tree)
 	{
 		// KO drawTree paleti: gövde #6e4a2a, kozalak yeşilleri varyanta göre.
-		AddPart(CylM, Hex(TEXT("6e4a2a")), FVector(0, 0, 55), FVector(0.16f, 0.16f, 1.1f));
+		AddPart(ResNodeCylM, Hex(TEXT("6e4a2a")), FVector(0, 0, 55), FVector(0.16f, 0.16f, 1.1f));
 		if (Variant == 1) // yuvarlak yapraklı
 		{
-			AddPart(SphereM, Hex(TEXT("2f9e4f")), FVector(0, 0, 170), FVector(1.5f), FRotator::ZeroRotator, false);
-			AddPart(SphereM, Hex(TEXT("23753a")), FVector(35, 20, 140), FVector(1.0f), FRotator::ZeroRotator, false);
-			AddPart(SphereM, Hex(TEXT("49bd66")), FVector(-28, -14, 195), FVector(0.7f), FRotator::ZeroRotator, false);
+			AddPart(ResNodeSphereM, Hex(TEXT("2f9e4f")), FVector(0, 0, 170), FVector(1.5f), FRotator::ZeroRotator, false);
+			AddPart(ResNodeSphereM, Hex(TEXT("23753a")), FVector(35, 20, 140), FVector(1.0f), FRotator::ZeroRotator, false);
+			AddPart(ResNodeSphereM, Hex(TEXT("49bd66")), FVector(-28, -14, 195), FVector(0.7f), FRotator::ZeroRotator, false);
 		}
 		else // çam (KO varyant 0/2)
 		{
 			const FLinearColor A = (Variant == 2) ? Hex(TEXT("14532e")) : Hex(TEXT("1f7a44"));
 			const FLinearColor B = (Variant == 2) ? Hex(TEXT("1b6b3c")) : Hex(TEXT("2a955a"));
-			AddPart(ConeM, A, FVector(0, 0, 110), FVector(1.7f, 1.7f, 1.3f), FRotator::ZeroRotator, false);
-			AddPart(ConeM, B, FVector(0, 0, 180), FVector(1.3f, 1.3f, 1.1f), FRotator::ZeroRotator, false);
-			AddPart(ConeM, A, FVector(0, 0, 245), FVector(0.9f, 0.9f, 0.95f), FRotator::ZeroRotator, false);
+			AddPart(ResNodeConeM, A, FVector(0, 0, 110), FVector(1.7f, 1.7f, 1.3f), FRotator::ZeroRotator, false);
+			AddPart(ResNodeConeM, B, FVector(0, 0, 180), FVector(1.3f, 1.3f, 1.1f), FRotator::ZeroRotator, false);
+			AddPart(ResNodeConeM, A, FVector(0, 0, 245), FVector(0.9f, 0.9f, 0.95f), FRotator::ZeroRotator, false);
 		}
 	}
 	else if (Type == EKKResource::Rock)
 	{
 		const float RS = (Variant == 1) ? 1.25f : (Variant == 2 ? 0.82f : 1.f);
-		AddPart(CubeM, Hex(TEXT("7e8694")), FVector(0, 0, 28 * RS), FVector(0.78f * RS, 0.62f * RS, 0.5f * RS), FRotator(0, 18, 0));
-		AddPart(CubeM, Hex(TEXT("a8b0bd")), FVector(8, -6, 58 * RS), FVector(0.42f * RS, 0.4f * RS, 0.3f * RS), FRotator(0, -12, 6), false);
+		AddPart(ResNodeCubeM, Hex(TEXT("7e8694")), FVector(0, 0, 28 * RS), FVector(0.78f * RS, 0.62f * RS, 0.5f * RS), FRotator(0, 18, 0));
+		AddPart(ResNodeCubeM, Hex(TEXT("a8b0bd")), FVector(8, -6, 58 * RS), FVector(0.42f * RS, 0.4f * RS, 0.3f * RS), FRotator(0, -12, 6), false);
 		if (Variant == 2) // yosunlu (KO #4f9b58 detayı)
-			AddPart(CubeM, Hex(TEXT("4f9b58")), FVector(-16, 14, 44 * RS), FVector(0.2f, 0.18f, 0.08f), FRotator::ZeroRotator, false);
+			AddPart(ResNodeCubeM, Hex(TEXT("4f9b58")), FVector(-16, 14, 44 * RS), FVector(0.2f, 0.18f, 0.08f), FRotator::ZeroRotator, false);
 	}
 	else // Bush
 	{
-		AddPart(SphereM, Hex(TEXT("2c7a3d")), FVector(0, 0, 32), FVector(0.78f), FRotator::ZeroRotator, false);
-		AddPart(SphereM, Hex(TEXT("3c9b51")), FVector(-20, 10, 40), FVector(0.5f),  FRotator::ZeroRotator, false);
-		AddPart(SphereM, Hex(TEXT("2c7a3d")), FVector(18, -8, 36),  FVector(0.52f), FRotator::ZeroRotator, false);
+		AddPart(ResNodeSphereM, Hex(TEXT("2c7a3d")), FVector(0, 0, 32), FVector(0.78f), FRotator::ZeroRotator, false);
+		AddPart(ResNodeSphereM, Hex(TEXT("3c9b51")), FVector(-20, 10, 40), FVector(0.5f),  FRotator::ZeroRotator, false);
+		AddPart(ResNodeSphereM, Hex(TEXT("2c7a3d")), FVector(18, -8, 36),  FVector(0.52f), FRotator::ZeroRotator, false);
 		// Böğürtlenler (#e23d4f): hasatta gizlenir, dolunca görünür.
 		const FVector BPos[3] = { FVector(-14, -16, 46), FVector(16, 12, 50), FVector(2, -2, 62) };
 		for (const FVector& P : BPos)
 		{
-			UStaticMeshComponent* Berry = AddPart(SphereM, Hex(TEXT("e23d4f")), P, FVector(0.11f), FRotator::ZeroRotator, false);
+			UStaticMeshComponent* Berry = AddPart(ResNodeSphereM, Hex(TEXT("e23d4f")), P, FVector(0.11f), FRotator::ZeroRotator, false);
 			BerryParts.Add(Berry);
 		}
 	}
