@@ -21,3 +21,12 @@ her yeni varlık bu dile çevrilerek eklenir, dil değiştirilmez.
 ## Kural
 Yeni görsel = önce HTML'de karşılığı var mı bak; varsa **porta sadık kal**,
 yoksa yukarıdaki grammar içinde tasarla. "Kendi standardını koymak" yasak.
+
+---
+## Kanon güncellemesi (v2.3)
+Kullanıcının ürettiği **kara-fantezi boyalı sayfa** sprite kanonudur.
+Kod tarafı gerçeği: Canvas vektör çizimi bu raster boyama dokusunu BİREBİR
+üretemez — prosedürel çizim artık aynı kompozisyonun **düz-gölgeli
+yaklaşımıdır** (tuğla sıraları, mazgal, mavi-altın sancak, kemerli kapı,
+demir kuşaklı palisat). Birebirlik yalnız sprite hattından gelir;
+prosedürel katman sprite olmayan her varlıkta yedek olarak yaşar.

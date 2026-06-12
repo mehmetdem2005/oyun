@@ -100,7 +100,9 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     override fun surfaceCreated(h: SurfaceHolder) { surfaceReady = true; startLoop() }
     override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, hh: Int) {
         vw = w.toFloat(); vh = hh.toFloat()
-        Z = if (vh > vw) 1.45f else 1.6f                 // dikey-öncelik; yatay da desteklenir
+        us = clampF(Math.min(vw, vh) / 420f, 1.4f, 3.6f) // UI: ~420dp sanal tuval
+        uw = vw / us; uh = vh / us
+        applyZoom()
         nightBmp = Bitmap.createBitmap(Math.max(1, w / 2), Math.max(1, hh / 2),
             Bitmap.Config.ARGB_8888)
         nightCv = Canvas(nightBmp!!)
@@ -119,6 +121,12 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         return false
     }
 
+    /* HTML kadrajı: kısa kenara ~N karo sığar (ayar: yakın 8.5 / orta 10.5 / uzak 13) */
+    private fun applyZoom() {
+        if (vw <= 1f) return
+        val tiles = floatArrayOf(8.5f, 10.5f, 13f)[zoomMode]
+        Z = clampF(Math.min(vw, vh) / (tiles * K.TS), 2.0f, 5.0f)
+    }
     private fun startLoop() {
         if (running) return
         running = true; lastNs = System.nanoTime()
@@ -159,6 +167,25 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     private var hotbarRect = RectF(0f, 0f, 0f, 0f)
     private val buildRects = ArrayList<Pair<RectF, Int>>()
     private var wt = 0f                                  // yürüyüş fazı (yalnız çizim)
+    private var sprInit = false
+    private var us = 2.4f; private var uw = 1f; private var uh = 1f   // UI ölçeği + sanal tuval
+    private var zoomMode = 1                             // 0 yakın · 1 orta · 2 uzak (ayarlardan)
+    private val spp = Paint()                            // sprite boyası
+    private var mmBmp: Bitmap? = null; private var mmCv: Canvas? = null
+    private var mmT = 0f; private val mmP = Paint()      // minimap tamponu
+    private fun spr(c: Canvas, names: Array<String>, t: Float, fps: Float,
+                    x: Float, y: Float, w: Float, flip: Boolean, alpha: Int): Boolean {
+        var k = 0
+        while (k < names.size) {
+            if (Sprites.has(names[k])) {
+                spp.setAlpha(alpha)
+                Sprites.draw(c, names[k], t, fps, x, y, w, flip, spp)
+                return true
+            }
+            k++
+        }
+        return false
+    }
     private val p2c = Paint()
     private fun p2(w: Float, col: Int): Paint {
         p2c.setStyle(Paint.Style.STROKE); p2c.setStrokeCap(Paint.Cap.ROUND)
@@ -176,6 +203,12 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     /** Bir simülasyon adımı + çekirdek→kabuk olay kuyruklarının boşaltılması. */
     private fun step(dt: Float) {
         val g = game ?: return
+        if (!sprInit) {
+            sprInit = true
+            Sprites.load(appCtx)
+            zoomMode = appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE).getInt("zoom", 1)
+            applyZoom()
+        }
         if (g.chatPort == null)                          // yerel sohbet adaptörü (port bağlama)
             g.chatPort = object : ChatPort { override fun send(text: String, who: Int) { } }
         if (atkHeld) g.tapAttack()                      // basılı tut = seri vuruş (çekirdek cd'li)
@@ -204,6 +237,8 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         s.flash = 0f
         if (s.shakeTiles.isNotEmpty()) { shakeT = 0.22f; s.shakeTiles.clear() }
         s.dirtyChunks.clear()                           // zemin değişmez; kaynak canlı çizilir
+        mmT -= dt
+        if (mmT <= 0f) { mmT = 0.6f; updateMinimap(s) }
         if (g.autoSaveRequested) { g.autoSaveRequested = false; saveNow() }
         decayHud(dt)
         // kamera: oyuncuyu merkezde tutan yumuşak takip
@@ -419,6 +454,12 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     }
     private fun drawRes(c: Canvas, s: GameState, kind: Int, variant: Int,
                         x: Float, y: Float, hitsLeft: Int?, tx: Int, ty: Int) {
+        val rk = if (kind == K.R_TREE) (if (variant == 1) "tree_1" else if (variant == 2) "tree_2" else "tree_3")
+            else if (kind == K.R_ROCK) (if (variant == 1) "rock_2" else if (variant == 2) "rock_3" else "rock_1")
+            else "bush"
+        val sprR = spr(c, arrayOf(rk), 0f, 1f, x, y + 1f,
+            if (kind == K.R_TREE) 46f else 30f, false, 255)
+        if (!sprR) {
         if (kind == K.R_TREE) {
             shadowE(c, x, y + 2f, 15f, 6f)
             p.setColor(rgb(110, 74, 42))
@@ -456,6 +497,7 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             c.drawCircle(x - 5f, y - 6f, 2.3f, p); c.drawCircle(x + 4f, y - 8f, 2.3f, p)
             c.drawCircle(x + 1f, y - 3f, 2.3f, p)
         }
+        }
         if (hitsLeft != null) {                         // hasar çentiği (KO beyaz şerit)
             val mx = K.R_HITS.getValue(kind).toFloat()
             p.setColor(argb(150, 255, 255, 255))
@@ -465,6 +507,7 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     /* KALP TAŞI — ilk HTML birebir: iki katlı gri kaide + süzülen altın elmas */
     private fun drawHeart(c: Canvas, s: GameState) {
         val h = s.heart
+        if (h.alive && spr(c, arrayOf("heart_pulse"), s.t, 6f, h.x, h.y + 4f, 52f, false, 255)) return
         shadowE(c, h.x, h.y + 2f, 16f, 6f)
         p.setColor(if (h.alive) rgb(126, 134, 148) else rgb(74, 81, 88))
         c.drawRect(h.x - 14f, h.y - 8f, h.x + 14f, h.y + 4f, p)
@@ -481,39 +524,60 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     private fun drawBuild(c: Canvas, s: GameState, b: Build) {
         val x = b.x; val y = b.y
         shadowE(c, x, y + 2f, 15f, 5f)
+        val bk = if (b.t == K.WALL) "build_wall"
+            else if (b.t == K.WALL_STONE) "build_stonewall"
+            else if (b.t == K.WALL_KEEP) "build_keep"
+            else if (b.t == K.DOOR) (if (b.open) "build_gate_open" else "build_gate")
+            else "build_ballista"
+        val sprB = spr(c, arrayOf(bk), s.t, 4f, x, y + 2f,
+            if (b.t == K.WALL_KEEP || b.t == K.BALLISTA) 42f else 36f, false, 255)
+        if (!sprB) {
         if (b.t == K.WALL) {
             var i = 0
-            while (i < 4) {
+            while (i < 4) {                              // sivri kütükler (iki ton)
                 val px = x - 14f + i * 8f
-                p.setColor(rgb(110, 74, 42)); c.drawRect(px, y - 26f, px + 6f, y + 2f, p)
-                p.setColor(rgb(138, 90, 50)); c.drawRect(px + 1f, y - 30f, px + 5f, y - 25f, p)
+                p.setColor(rgb(86, 58, 34)); c.drawRect(px, y - 26f, px + 6f, y + 2f, p)
+                p.setColor(rgb(118, 82, 48)); c.drawRect(px, y - 26f, px + 2.5f, y + 2f, p)
+                p.setColor(rgb(140, 100, 58)); c.drawRect(px + 1f, y - 30f, px + 5f, y - 25f, p)
                 i++
             }
-            p.setColor(rgb(138, 90, 50)); c.drawRect(x - 15f, y - 12f, x + 15f, y - 8f, p)
-        } else if (b.t == K.WALL_STONE) {
-            p.setColor(rgb(126, 134, 148)); c.drawRect(x - 15f, y - 24f, x + 15f, y + 2f, p)
-            p.setColor(rgb(168, 176, 189)); c.drawRect(x - 12f, y - 31f, x + 12f, y - 21f, p)
-            p.setColor(rgb(90, 97, 109)); c.drawRect(x - 15f, y - 2f, x + 15f, y + 1f, p)
-        } else if (b.t == K.WALL_KEEP) {
-            p.setColor(rgb(74, 81, 88)); c.drawRect(x - 15f, y - 24f, x + 15f, y + 2f, p)
-            p.setColor(rgb(126, 134, 148)); c.drawRect(x - 13f, y - 30f, x + 13f, y - 21f, p)
-            var i = 0
-            while (i < 3) { c.drawRect(x - 13f + i * 10f, y - 36f, x - 7f + i * 10f, y - 30f, p); i++ }
-            p.setColor(rgb(46, 51, 58)); c.drawRect(x - 15f, y - 2f, x + 15f, y + 1f, p)
-        } else if (b.t == K.DOOR) {
-            p.setColor(rgb(110, 74, 42))
-            c.drawRect(x - 15f, y - 26f, x - 11f, y + 2f, p)
-            c.drawRect(x + 11f, y - 26f, x + 15f, y + 2f, p)
-            c.drawRect(x - 15f, y - 30f, x + 15f, y - 25f, p)
-            p.setColor(rgb(138, 90, 50))
-            if (b.open) c.drawRect(x - 15f, y - 22f, x - 10f, y - 4f, p)
-            else {
-                c.drawRect(x - 11f, y - 24f, x + 11f, y + 2f, p)
-                p.setColor(rgb(230, 210, 138)); c.drawRect(x + 4f, y - 12f, x + 7f, y - 9f, p)
+            p.setColor(rgb(120, 126, 136))               // demir kuşak + perçinler
+            c.drawRect(x - 15f, y - 13f, x + 15f, y - 9f, p)
+            p.setColor(rgb(214, 170, 76))
+            i = 0
+            while (i < 4) { c.drawRect(x - 12f + i * 8f, y - 12f, x - 10.6f + i * 8f, y - 10.6f, p); i++ }
+        } else if (b.t == K.WALL_STONE) {                // SAYFA: WALL_SEGMENT
+            bricks(c, x - 15f, y - 26f, x + 15f, y + 2f)
+            merlons(c, x, y - 26f, 30f)
+            p.setColor(rgb(46, 50, 58)); c.drawRect(x - 15f, y - 1f, x + 15f, y + 2f, p)
+            banner(c, x, y - 22f, 7f, 13f)
+        } else if (b.t == K.WALL_KEEP) {                 // SAYFA: WATCH_TOWER
+            bricks(c, x - 14f, y - 38f, x + 14f, y + 2f)
+            merlons(c, x, y - 38f, 28f)
+            p.setColor(rgb(34, 38, 46))                  // ok deliği
+            c.drawRect(x - 1.5f, y - 30f, x + 1.5f, y - 20f, p)
+            p.setColor(rgb(46, 50, 58)); c.drawRect(x - 14f, y - 1f, x + 14f, y + 2f, p)
+            banner(c, x, y - 16f, 9f, 15f)
+        } else if (b.t == K.DOOR) {                      // SAYFA: GATE
+            bricks(c, x - 15f, y - 26f, x - 10f, y + 2f)
+            bricks(c, x + 10f, y - 26f, x + 15f, y + 2f)
+            bricks(c, x - 15f, y - 32f, x + 15f, y - 24f)
+            merlons(c, x, y - 32f, 30f)
+            if (b.open) {
+                p.setColor(rgb(22, 26, 34)); c.drawRect(x - 10f, y - 24f, x + 10f, y + 2f, p)
+                p.setColor(rgb(70, 48, 30)); c.drawRect(x - 10f, y - 22f, x - 6f, y + 2f, p)
+            } else {
+                p.setColor(rgb(70, 48, 30))              // kemerli kanat
+                c.drawRect(x - 10f, y - 22f, x + 10f, y + 2f, p)
+                c.drawRect(x - 7f, y - 25f, x + 7f, y - 21f, p)
+                p.setColor(rgb(120, 126, 136))           // demir bantlar
+                c.drawRect(x - 10f, y - 16f, x + 10f, y - 14f, p)
+                c.drawRect(x - 10f, y - 6f, x + 10f, y - 4f, p)
+                p.setColor(rgb(214, 170, 76)); c.drawRect(x + 4f, y - 12f, x + 7f, y - 9f, p)
             }
         } else {                                        // BALİSTA
-            p.setColor(rgb(110, 74, 42)); c.drawRect(x - 13f, y - 14f, x + 13f, y + 2f, p)
-            p.setColor(rgb(138, 90, 50)); c.drawCircle(x, y - 10f, 8f, p)
+            bricks(c, x - 14f, y - 16f, x + 14f, y + 2f) // SAYFA: BALLISTA_TOWER tabanı
+            p.setColor(rgb(114, 78, 46)); c.drawCircle(x, y - 10f, 8f, p)
             val dx = cosF(b.scan); val dy = sinF(b.scan)
             p.setColor(rgb(110, 74, 42)); p.setStrokeWidth(4f)
             c.drawLine(x, y - 10f, x + dx * 15f, y - 10f + dy * 15f, p)
@@ -527,6 +591,20 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             val tg = b.boltTgt                          // uçan cıvata
             if (b.boltT >= 0f && tg != null) {
                 val pr = Math.min(1f, b.boltT / 0.22f)
+                val bx = x + (tg.x - x) * pr; val by = (y - 10f) + (tg.y - 8f - (y - 10f)) * pr
+                p.setColor(rgb(205, 212, 222)); p.setStrokeWidth(2f)
+                c.drawLine(bx, by, bx - dx * 8f, by - dy * 8f, p)
+            }
+        }
+        }
+        if (sprB && b.t == K.BALLISTA) {                 // sprite olsa da oynanış geri bildirimi
+            p.setColor(rgb(230, 210, 138))
+            var i = 0
+            while (i < Math.min(b.ammo, 5)) { c.drawRect(x - 12f + i * 5f, y + 3f, x - 9f + i * 5f, y + 7f, p); i++ }
+            val tg = b.boltTgt
+            if (b.boltT >= 0f && tg != null) {
+                val pr = Math.min(1f, b.boltT / 0.22f)
+                val dx = cosF(b.scan); val dy = sinF(b.scan)
                 val bx = x + (tg.x - x) * pr; val by = (y - 10f) + (tg.y - 8f - (y - 10f)) * pr
                 p.setColor(rgb(205, 212, 222)); p.setStrokeWidth(2f)
                 c.drawLine(bx, by, bx - dx * 8f, by - dy * 8f, p)
@@ -572,6 +650,13 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         if (!pl.alive) return
         if (pl.swim) { drawSwimmer(c, s, pl); return }
         val mv = Math.abs(joyVx) + Math.abs(joyVy) > 0.05f
+        val flipP = pl.fx < -0.3f
+        val pk = if (pl.attackT > 0f) "player_attack" else if (mv) "player_walk" else "player_idle"
+        if (spr(c, arrayOf(pk, "player_idle"), s.t + (if (pl.attackT > 0f) (0.18f - pl.attackT) * 30f else 0f),
+                if (pl.attackT > 0f) 1f else if (mv) 10f else 6f, pl.x, pl.y, 44f, flipP, 255)) {
+            if (pl.buildMode) { p.setColor(argb(230, 232, 183, 61)); c.drawCircle(pl.x, pl.y - 44f, 3f, p) }
+            return
+        }
         drawHumanRect(c, s, pl.x, pl.y, pl.fx, pl.fy, mv,
             rgb(62, 127, 208), rgb(80, 50, 23), false, 255)          // HTML mavisi + kahve saç
         if ((pl.inv["club"] ?: 0) > 0) {                             // SOPA: balta savurma mekaniği
@@ -586,33 +671,39 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         if (pl.buildMode) { p.setColor(argb(230, 232, 183, 61)); c.drawCircle(pl.x, pl.y - 38f, 3f, p) }
     }
 
-    /* YÜZME — aynı piksel dili: su üstünde yarım gövde + dönüşümlü 5×3 kulaç + köpük */
+    /* YÜZME — yan profil KURBAĞALAMA: vücut hareket yönüne yatar,
+       kol süpürür, bacaklar makas-tekme atar, burunda dalga köpürür. */
     private fun drawSwimmer(c: Canvas, s: GameState, pl: Player) {
-        val str = sinF(s.t * 7f)
-        p.setColor(argb(90, 10, 40, 70))
-        c.save(); c.translate(pl.x, pl.y + 7f); c.scale(1f, 0.42f)
-        c.drawCircle(0f, 0f, 12f, p); c.restore()                    // su altı silueti
-        c.save(); c.translate(pl.x, pl.y + sinF(s.t * 3f) * 1.2f)
-        p.setColor(rgb(62, 127, 208)); c.drawRect(-7f, -13f, 7f, -4f, p)
-        p.setColor(rgb(242, 192, 140))                               // kulaçlar
-        if (str > 0f) c.drawRect(-12f, -16f - str * 4f, -7f, -13f - str * 4f, p)
-        else c.drawRect(-12f, -10f, -7f, -7f, p)
-        if (str <= 0f) c.drawRect(7f, -16f + str * 4f, 12f, -13f + str * 4f, p)
-        else c.drawRect(7f, -10f, 12f, -7f, p)
-        p.setColor(rgb(242, 192, 140)); c.drawRect(-6f, -24f, 6f, -13f, p)
-        p.setColor(rgb(80, 50, 23)); c.drawRect(-6f, -24f, 6f, -20f, p)
-        val ex = clampF(pl.fx * 2.5f, -2.5f, 2.5f)
-        p.setColor(rgb(29, 37, 48))
-        c.drawRect(-3f + ex, -19f, -1f + ex, -16.5f, p)
-        c.drawRect(2f + ex, -19f, 4f + ex, -16.5f, p)
-        p.setColor(argb(200, 230, 246, 255)); c.drawRect(-12f, -5f, 12f, -2.4f, p)
+        if (spr(c, arrayOf("player_swim"), s.t, 8f, pl.x, pl.y, 46f,
+                pl.fx < 0f && Math.abs(pl.fx) >= Math.abs(pl.fy), 255)) return
+        val ang = Math.atan2(pl.fy.toDouble(), pl.fx.toDouble()).toFloat() * 57.296f
+        val ph = sinF(s.t * 4.5f)                        // kurbağalama döngüsü
+        c.save(); c.translate(pl.x, pl.y); c.rotate(ang)
+        val kick = ph * 0.5f + 0.5f                      // 0 kapalı → 1 açık makas
+        p.setColor(argb(120, 16, 48, 84))                // su altı bacaklar
+        c.drawRect(-17f, -1.2f - kick * 4.5f, -6f, 1.4f - kick * 4.5f, p)
+        c.drawRect(-17f, -1.2f + kick * 4.5f, -6f, 1.4f + kick * 4.5f, p)
+        p.setColor(rgb(62, 127, 208))                    // gövde: yatay yan profil
+        c.drawRect(-8f, -7f, 8f, 0f, p)
+        p.setColor(argb(64, 0, 0, 0)); c.drawRect(-8f, -2f, 8f, 0f, p)
+        val arm = -12f + kick * 96f                      // kol süpürmesi: ileri→yana→topla
+        c.save(); c.translate(4f, -5f); c.rotate(arm)
+        p.setColor(rgb(242, 192, 140)); c.drawRect(0f, -1.6f, 11f, 1.6f, p); c.restore()
+        p.setColor(rgb(242, 192, 140)); c.drawRect(8f, -10f, 16f, -1f, p)   // kafa önde
+        p.setColor(rgb(80, 50, 23)); c.drawRect(8f, -10f, 16f, -6.5f, p)
+        p.setColor(rgb(29, 37, 48)); c.drawRect(13.2f, -6f, 15.2f, -4f, p)
+        p.setColor(argb(200, 230, 246, 255))             // su çizgisi köpüğü
+        c.drawRect(-13f, -1.2f, 17f, 1.2f, p)
+        p.setColor(argb(170, 235, 248, 255))             // burun dalgası
+        c.drawRect(16f, -3.2f - Math.abs(ph) * 2f, 20f, -1f, p)
         c.restore()
     }
 
     private fun drawVillager(c: Canvas, s: GameState) {
         val v = s.villager ?: return
         if (v.state == K.VS_CAGED) {
-            drawHumanRect(c, s, v.x, v.y, 0f, 1f, false, rgb(215, 111, 163), rgb(58, 38, 20), true, 235)
+            if (!spr(c, arrayOf("ayla_caged"), s.t, 4f, v.x, v.y + 4f, 44f, false, 255))
+                drawHumanRect(c, s, v.x, v.y, 0f, 1f, false, rgb(215, 111, 163), rgb(58, 38, 20), true, 235)
             p.setColor(rgb(108, 82, 50)); var k = -2                 // kafes çubukları
             while (k <= 2) { c.drawRect(v.x + k * 7f - 1.4f, v.y - 38f, v.x + k * 7f + 1.4f, v.y + 4f, p); k++ }
             c.drawRect(v.x - 16f, v.y - 40f, v.x + 16f, v.y - 36f, p)
@@ -620,8 +711,11 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             drawTag(c, v.x, v.y - 50f, "E: Kurtar")
             return
         }
-        drawHumanRect(c, s, v.x, v.y, if (v.tgtX < v.x) -1f else 1f, 0.4f, v.hasTgt,
-            rgb(215, 111, 163), rgb(58, 38, 20), true, 255)          // Ayla: HTML pembesi
+        val vk = if (v.carry > 0) "ayla_carry" else if (v.hasTgt) "ayla_walk" else "ayla_idle"
+        if (!spr(c, arrayOf(vk, "ayla_idle"), s.t, if (v.hasTgt) 10f else 5f,
+                v.x, v.y, 42f, v.tgtX < v.x, 255))
+            drawHumanRect(c, s, v.x, v.y, if (v.tgtX < v.x) -1f else 1f, 0.4f, v.hasTgt,
+                rgb(215, 111, 163), rgb(58, 38, 20), true, 255)          // Ayla: HTML pembesi
         if (v.carry > 0) {
             c.save(); c.translate(v.x, v.y - 30f); c.rotate(-18f)
             p.setColor(rgb(110, 74, 42)); c.drawRect(-11f, -3f, 11f, 3f, p)
@@ -634,6 +728,7 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     /* GÖLGE — HTML drawEnemy birebir: wob'lu mürekkep elipsi + mor taç + göz şeritleri */
     private fun drawShadow(c: Canvas, s: GameState, e: Shadow) {
         val a = (255f * Math.min(1f, e.scale)).toInt()
+        if (spr(c, arrayOf("shadow_float"), s.t + e.ph, 8f, e.x, e.y, 40f * e.scale, false, a)) return
         val wob = sinF(s.t * 6f + e.ph) * 0.14f + 1f
         p.setColor(argb((64 * a) / 255, 90, 50, 160))
         c.save(); c.translate(e.x, e.y + 1f); c.scale(1f, 5f / 12f)
@@ -661,6 +756,12 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
 
     /* FAUNA — HTML drawCritter birebir; domuz aynı dilde eklendi */
     private fun drawCritter(c: Canvas, s: GameState, cr: Critter) {
+        val sk = if (cr.kind == K.CK_RABBIT) (if (cr.moving) "rabbit_hop" else "rabbit_idle")
+            else if (cr.kind == K.CK_DEER) (if (cr.moving) "deer_run" else "deer_idle")
+            else if (cr.kind == K.CK_BOAR) (if (cr.chargeT > 0f) "boar_charge" else "boar_walk")
+            else (if (cr.aggro) "wolf_run" else "wolf_walk")
+        if (spr(c, arrayOf(sk, sk.substring(0, sk.indexOf('_')) + "_idle"),
+                s.t + cr.ph, if (cr.moving) 10f else 6f, cr.x, cr.y, 38f, cr.wx < 0f, 255)) return
         val x = cr.x; val y = cr.y
         c.save()
         if (cr.wx < 0f) { c.translate(x, y); c.scale(-1f, 1f); c.translate(-x, -y) }
@@ -852,9 +953,111 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             k++
         }
     }
+    /* MİNİMAP: 56×56 karo, 2px hücre — 0.6 sn'de bir tazelenir */
+    private fun updateMinimap(s: GameState) {
+        var bm = mmBmp
+        if (bm == null) {
+            bm = Bitmap.createBitmap(112, 112, Bitmap.Config.ARGB_8888)
+            mmBmp = bm; mmCv = Canvas(bm)
+        }
+        val cv = mmCv ?: return
+        val ptx = s.wtX(s.player.x); val pty = s.wtY(s.player.y)
+        var ty = 0
+        while (ty < 56) {
+            var tx = 0
+            while (tx < 56) {
+                val wx2 = ptx - 28 + tx; val wy2 = pty - 28 + ty
+                val t = s.gen.tileAt(wx2, wy2)
+                mmP.setColor(
+                    if (t == K.T_DEEP) rgb(29, 86, 143)
+                    else if (t == K.T_WATER) rgb(46, 124, 196)
+                    else if (t == K.T_SAND) rgb(230, 210, 138)
+                    else if (t == K.T_CAMP) rgb(200, 160, 109)
+                    else if (s.gen.resourceAt(wx2, wy2) != null) rgb(38, 110, 58)
+                    else rgb(79, 174, 96))
+                cv.drawRect(tx * 2f, ty * 2f, tx * 2f + 2f, ty * 2f + 2f, mmP)
+                tx++
+            }
+            ty++
+        }
+        for (b in s.builds.values) {                      // yapılar: açık gri
+            val dx = s.wtX(b.x) - ptx + 28; val dy = s.wtY(b.y) - pty + 28
+            if (dx in 0..55 && dy in 0..55) {
+                mmP.setColor(rgb(220, 224, 232)); cv.drawRect(dx * 2f, dy * 2f, dx * 2f + 2f, dy * 2f + 2f, mmP)
+            }
+        }
+        val hx = s.heart.x / K.TS - ptx + 28; val hy2 = s.heart.y / K.TS - pty + 28
+        if (hx > 0f && hx < 55f) { mmP.setColor(rgb(232, 183, 61)); cv.drawRect(hx * 2f - 1f, hy2 * 2f - 1f, hx * 2f + 3f, hy2 * 2f + 3f, mmP) }
+        for (e in s.shadows) if (e.alive) {               // gece tehdidi: kırmızı
+            val ex = e.x / K.TS - ptx + 28; val ey = e.y / K.TS - pty + 28
+            if (ex > 0f && ex < 56f && ey > 0f && ey < 56f) {
+                mmP.setColor(rgb(255, 90, 90)); cv.drawRect(ex * 2f, ey * 2f, ex * 2f + 2f, ey * 2f + 2f, mmP)
+            }
+        }
+        mmP.setColor(rgb(255, 255, 255))                  // oyuncu: merkez
+        cv.drawRect(54f, 54f, 58f, 58f, mmP)
+    }
+    /* ── Kara-fantezi yapı dili: tuğla sırası + mazgal + mavi-altın sancak ── */
+    private fun bricks(c: Canvas, x0: Float, y0: Float, x1: Float, y1: Float) {
+        p.setColor(rgb(56, 60, 68)); c.drawRect(x0, y0, x1, y1, p)   // harç zemini
+        var row = 0; var yy = y0 + 1f
+        while (yy < y1 - 1f) {
+            var xx = x0 + 1f + (if (row % 2 == 1) 4.5f else 0f) - 9f
+            while (xx < x1 - 1f) {
+                val l = Math.max(xx, x0 + 1f); val r = Math.min(xx + 8f, x1 - 1f)
+                if (r > l + 1f) {
+                    p.setColor(if (row == 0) rgb(134, 140, 152) else rgb(98, 102, 112))
+                    c.drawRect(l, yy, r, Math.min(yy + 6f, y1 - 1f), p)
+                }
+                xx += 9f
+            }
+            yy += 7f; row++
+        }
+    }
+    private fun merlons(c: Canvas, x: Float, topY: Float, span: Float) {
+        p.setColor(rgb(142, 148, 160))
+        var i = 0
+        while (i < 3) {
+            val mx2 = x - span / 2f + i * (span - 6f) / 2f
+            c.drawRect(mx2, topY - 6f, mx2 + 6f, topY, p); i++
+        }
+    }
+    private fun banner(c: Canvas, x: Float, top: Float, w: Float, h: Float) {
+        p.setColor(rgb(30, 58, 118)); c.drawRect(x - w / 2f, top, x + w / 2f, top + h, p)
+        p.setColor(rgb(46, 84, 158)); c.drawRect(x - w / 2f + 1f, top, x + w / 2f - 1f, top + h - 3f, p)
+        p.setColor(rgb(214, 170, 76))                    // altın arma
+        c.save(); c.translate(x, top + h * 0.42f); c.rotate(45f)
+        c.drawRect(-2.4f, -2.4f, 2.4f, 2.4f, p); c.restore()
+    }
+    /* Çip ikonları — HTML drawIconCv ruhunda mini piksel ikonlar */
+    private fun itemIcon(c: Canvas, name: String, cx: Float, cy: Float) {
+        if (name == "wood") {
+            p.setColor(rgb(122, 78, 42)); c.save(); c.translate(cx, cy); c.rotate(-18f)
+            c.drawRect(-8f, -3f, 8f, 3f, p)
+            p.setColor(rgb(190, 152, 104)); c.drawCircle(8f, 0f, 2.6f, p); c.restore()
+        } else if (name == "stone") {
+            p.setColor(rgb(126, 134, 148)); c.drawRect(cx - 7f, cy - 3f, cx + 7f, cy + 5f, p)
+            p.setColor(rgb(168, 176, 189)); c.drawRect(cx - 4f, cy - 6f, cx + 4f, cy - 1f, p)
+        } else if (name == "berry") {
+            p.setColor(rgb(226, 61, 79))
+            c.drawCircle(cx - 3f, cy, 3.4f, p); c.drawCircle(cx + 3f, cy - 2f, 3.4f, p)
+            p.setColor(rgb(60, 155, 81)); c.drawRect(cx - 1f, cy - 7f, cx + 1f, cy - 3f, p)
+        } else if (name == "meat") {
+            p.setColor(rgb(196, 77, 94)); c.drawCircle(cx - 2f, cy, 4.6f, p)
+            p.setColor(rgb(238, 232, 220)); c.drawRect(cx + 2f, cy - 1.4f, cx + 8f, cy + 1.4f, p)
+            c.drawCircle(cx + 8f, cy, 2f, p)
+        } else if (name == "hide") {
+            p.setColor(rgb(168, 116, 63)); c.drawRect(cx - 7f, cy - 5f, cx + 7f, cy + 5f, p)
+            p.setColor(rgb(120, 80, 44)); c.drawRect(cx - 7f, cy - 5f, cx - 4f, cy + 5f, p)
+        } else {                                          // sopa
+            p.setColor(rgb(122, 78, 42)); c.save(); c.translate(cx, cy); c.rotate(40f)
+            c.drawRect(-7f, -1.6f, 6f, 1.6f, p)
+            p.setColor(rgb(92, 60, 32)); c.drawCircle(7f, 0f, 3.2f, p); c.restore()
+        }
+    }
     /* ── SOHBET HUD: düğme + akış; paneller modal ── */
     private fun drawChatHud(c: Canvas, s: GameState) {
-        val bx = 56f; val by = vh * 0.40f
+        val bx = 56f; val by = uh * 0.40f
         p.setColor(argb(180, 24, 40, 64))
         c.drawRoundRect(RectF(bx - 36f, by - 18f, bx + 36f, by + 18f), 12f, 12f, p)
         tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(12f); tp.setColor(Color.WHITE)
@@ -880,36 +1083,36 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     }
     private fun drawChatPanel(c: Canvas) {
         msgRects.clear()
-        p.setColor(argb(120, 0, 0, 0)); c.drawRect(0f, 0f, vw, vh, p)
-        val pw = Math.min(vw - 40f, 360f); val ph = 64f * K.QCHAT.size + 110f
-        val l = vw / 2f - pw / 2f; val t0 = vh / 2f - ph / 2f
+        p.setColor(argb(120, 0, 0, 0)); c.drawRect(0f, 0f, uw, uh, p)
+        val pw = Math.min(uw - 40f, 360f); val ph = 64f * K.QCHAT.size + 110f
+        val l = uw / 2f - pw / 2f; val t0 = uh / 2f - ph / 2f
         p.setColor(argb(242, 16, 24, 38)); c.drawRoundRect(RectF(l, t0, l + pw, t0 + ph), 18f, 18f, p)
         tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(16f); tp.setColor(rgb(255, 215, 106))
-        c.drawText("HIZLI MESAJ", vw / 2f, t0 + 32f, tp)
+        c.drawText("HIZLI MESAJ", uw / 2f, t0 + 32f, tp)
         var k = 0
         while (k < K.QCHAT.size) {
             val r = RectF(l + 18f, t0 + 50f + k * 64f, l + pw - 18f, t0 + 102f + k * 64f)
             p.setColor(argb(235, 38, 64, 104)); c.drawRoundRect(r, 12f, 12f, p)
             tp.setTextSize(14f); tp.setColor(Color.WHITE)
-            c.drawText(K.QCHAT[k], vw / 2f, r.top + 33f, tp)
+            c.drawText(K.QCHAT[k], uw / 2f, r.top + 33f, tp)
             msgRects.add(Pair(r, k)); k++
         }
         val cr = RectF(l + 18f, t0 + ph - 48f, l + pw - 18f, t0 + ph - 14f)
         p.setColor(argb(220, 90, 40, 40)); c.drawRoundRect(cr, 10f, 10f, p)
-        tp.setTextSize(13f); tp.setColor(Color.WHITE); c.drawText("KAPAT", vw / 2f, cr.top + 23f, tp)
+        tp.setTextSize(13f); tp.setColor(Color.WHITE); c.drawText("KAPAT", uw / 2f, cr.top + 23f, tp)
         msgRects.add(Pair(cr, -1))
         tp.setTextSize(9.5f); tp.setColor(argb(150, 255, 255, 255))
-        c.drawText("Global sohbet yol haritasında (sunucu adaptörü)", vw / 2f, t0 + ph - 58f, tp)
+        c.drawText("Global sohbet yol haritasında (sunucu adaptörü)", uw / 2f, t0 + ph - 58f, tp)
     }
     private fun drawInvPanel(c: Canvas, s: GameState) {
         msgRects.clear()
-        p.setColor(argb(120, 0, 0, 0)); c.drawRect(0f, 0f, vw, vh, p)
+        p.setColor(argb(120, 0, 0, 0)); c.drawRect(0f, 0f, uw, uh, p)
         val keys = arrayOf("wood", "stone", "berry", "meat", "hide", "club")
-        val pw = Math.min(vw - 40f, 380f); val ph = 36f * keys.size + 196f
-        val l = vw / 2f - pw / 2f; val t0 = vh / 2f - ph / 2f
+        val pw = Math.min(uw - 40f, 380f); val ph = 36f * keys.size + 196f
+        val l = uw / 2f - pw / 2f; val t0 = uh / 2f - ph / 2f
         p.setColor(argb(244, 16, 24, 38)); c.drawRoundRect(RectF(l, t0, l + pw, t0 + ph), 18f, 18f, p)
         tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(16f); tp.setColor(rgb(255, 215, 106))
-        c.drawText("ENVANTER", vw / 2f, t0 + 30f, tp)
+        c.drawText("ENVANTER", uw / 2f, t0 + 30f, tp)
         var k = 0
         while (k < keys.size) {
             val yy = t0 + 58f + k * 36f
@@ -925,13 +1128,13 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         p.setColor(if (canClub) argb(235, 44, 111, 60) else argb(160, 50, 58, 70))
         c.drawRoundRect(r1, 12f, 12f, p)
         tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(14f); tp.setColor(Color.WHITE)
-        c.drawText(if (canClub) "SOPA \u00dcRET \u2014 3 odun" else "Sopa ku\u015fan\u0131ld\u0131 \u2713", vw / 2f, cy + 31f, tp)
+        c.drawText(if (canClub) "SOPA \u00dcRET \u2014 3 odun" else "Sopa ku\u015fan\u0131ld\u0131 \u2713", uw / 2f, cy + 31f, tp)
         msgRects.add(Pair(r1, 100))
         tp.setTextSize(10f); tp.setColor(argb(170, 255, 255, 255))
-        c.drawText("\u0130pucu: \u0130n\u015fa modunda E \u2192 \u00f6ndeki yap\u0131y\u0131 S\u00d6K (%50 iade)", vw / 2f, cy + 70f, tp)
+        c.drawText("\u0130pucu: \u0130n\u015fa modunda E \u2192 \u00f6ndeki yap\u0131y\u0131 S\u00d6K (%50 iade)", uw / 2f, cy + 70f, tp)
         val cr = RectF(l + 18f, t0 + ph - 48f, l + pw - 18f, t0 + ph - 14f)
         p.setColor(argb(220, 90, 40, 40)); c.drawRoundRect(cr, 10f, 10f, p)
-        tp.setTextSize(13f); tp.setColor(Color.WHITE); c.drawText("KAPAT", vw / 2f, cr.top + 23f, tp)
+        tp.setTextSize(13f); tp.setColor(Color.WHITE); c.drawText("KAPAT", uw / 2f, cr.top + 23f, tp)
         msgRects.add(Pair(cr, -1))
     }
 
@@ -944,7 +1147,8 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         tp.setTextSize(10f); tp.setTextAlign(Paint.Align.LEFT); tp.setColor(argb(230, 255, 255, 255))
         c.drawText(lab, x + 6f, y + 12f, tp)
     }
-    private fun drawHud(c: Canvas, s: GameState) {
+    private fun drawHud(c: Canvas, s: GameState) { c.save(); c.scale(us, us); drawHudI(c, s); c.restore() }
+    private fun drawHudI(c: Canvas, s: GameState) {
         val g = game!!
         bar(c, 20f, 18f, 230f, s.player.hp / 100f, rgb(226, 61, 79), "CAN")
         bar(c, 20f, 40f, 230f, s.player.en / 100f, rgb(232, 183, 61), "ENERJİ")
@@ -952,38 +1156,35 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         bar(c, 20f, 84f, 230f, s.heart.hp / 300f, rgb(255, 215, 106), "KALP")
         // saat + hedef
         tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(16f); tp.setColor(Color.WHITE)
-        c.drawText(g.clockText(), vw / 2f, 32f, tp)
+        c.drawText(g.clockText(), uw / 2f, 32f, tp)
         tp.setTextSize(11f); tp.setColor(argb(210, 255, 255, 255))
         val goal = if (s.victory) "Hikâye senin — krallık ayakta ★"
             else if (!s.heart.alive) "Kalp düştü… güneşi yine de kovala"
             else "Hedef: 10 gece hayatta kal · Gün " + Math.min(s.day, 10) + "/10"
-        c.drawText(goal, vw / 2f, 52f, tp)
+        c.drawText(goal, uw / 2f, 52f, tp)
         // envanter çipleri (alt-orta)
-        val items = arrayOf("wood", "stone", "berry", "meat", "hide")
-        val cols = intArrayOf(rgb(138, 90, 50), rgb(154, 160, 173),
-            rgb(226, 61, 79), rgb(196, 77, 94), rgb(168, 116, 63))
+        val items = arrayOf("wood", "stone", "berry", "meat", "hide", "club")
         val cw = 66f; val totW = cw * items.size
-        var x = vw / 2f - totW / 2f
-        val hy = vh - 56f
+        var x = uw / 2f - totW / 2f
+        val hy = uh - 56f
         var i = 0
         while (i < items.size) {
             p.setColor(argb(170, 12, 18, 28))
             c.drawRoundRect(RectF(x + 3f, hy, x + cw - 3f, hy + 40f), 9f, 9f, p)
-            p.setColor(cols[i])
-            c.drawRoundRect(RectF(x + 10f, hy + 8f, x + 26f, hy + 24f), 4f, 4f, p)
+            itemIcon(c, items[i], x + 18f, hy + 17f)
             tp.setTextAlign(Paint.Align.LEFT); tp.setTextSize(15f); tp.setColor(Color.WHITE)
             c.drawText("" + (s.player.inv[items[i]] ?: 0), x + 32f, hy + 23f, tp)
             tp.setTextSize(8f); tp.setColor(argb(160, 255, 255, 255))
             c.drawText(K.ITEM_TR.getValue(items[i]), x + 10f, hy + 36f, tp)
             x += cw; i++
         }
-        hotbarRect = RectF(vw / 2f - totW / 2f - 4f, hy - 6f, vw / 2f + totW / 2f + 4f, hy + 44f)
+        hotbarRect = RectF(uw / 2f - totW / 2f - 4f, hy - 6f, uw / 2f + totW / 2f + 4f, hy + 44f)
         // inşa paneli: seçili yapı + maliyet (yetmeyen kalem kırmızı)
         if (s.player.buildMode) {
             tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(13f)
             tp.setColor(rgb(255, 215, 106))
             c.drawText("İNŞA: " + K.B_NAME.getValue(s.player.buildSel) +
-                "  (E: tip değiştir · VUR: yerleştir)", vw / 2f, hy - 30f, tp)
+                "  (E: tip değiştir · VUR: yerleştir)", uw / 2f, hy - 30f, tp)
             val cost = K.B_COST.getValue(s.player.buildSel)
             val sb = StringBuilder()
             var ok = true
@@ -994,9 +1195,9 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             }
             tp.setTextSize(11f)
             tp.setColor(if (ok) rgb(126, 242, 154) else rgb(255, 110, 110))
-            c.drawText(sb.toString(), vw / 2f, hy - 14f, tp)
+            c.drawText(sb.toString(), uw / 2f, hy - 14f, tp)
             buildRects.clear()                            // hızlı tip seçimi: 5 dokunmatik kutu
-            val bw = 52f; var bxx = vw / 2f - bw * 2.5f
+            val bw = 52f; var bxx = uw / 2f - bw * 2.5f
             var bi = 0
             while (bi < K.B_ORDER.size) {
                 val bt2 = K.B_ORDER[bi]
@@ -1010,12 +1211,19 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
                 bi++; bxx += bw
             }
         }
+        val mb = mmBmp                                   // minimap (sağ-üst, duraklatın altı)
+        if (mb != null) {
+            p.setColor(argb(200, 12, 18, 28))
+            c.drawRoundRect(RectF(uw - 136f, 76f, uw - 14f, 198f), 10f, 10f, p)
+            c.drawBitmap(mb, android.graphics.Rect(0, 0, 112, 112),
+                RectF(uw - 131f, 81f, uw - 19f, 193f), spp)
+        }
         drawChatHud(c, s)
         drawTouchButtons(c, s)
         if (chatOpen) drawChatPanel(c)
         if (invOpen) drawInvPanel(c, s)
         // tostlar
-        var ty2 = vh - 116f
+        var ty2 = uh - 116f
         i = toastQ.size - 1
         while (i >= 0) {
             val t = toastQ[i]
@@ -1023,10 +1231,10 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             val w = tp.measureText(t.text) + 26f
             val a = Math.min(1f, t.t / 0.4f)
             p.setColor(argb((215 * a).toInt(), 12, 18, 28))
-            c.drawRoundRect(RectF(vw / 2f - w / 2f, ty2 - 17f, vw / 2f + w / 2f, ty2 + 7f), 12f, 12f, p)
+            c.drawRoundRect(RectF(uw / 2f - w / 2f, ty2 - 17f, uw / 2f + w / 2f, ty2 + 7f), 12f, 12f, p)
             tp.setColor(withA(if (t.color == 1) rgb(255, 150, 150)
                 else if (t.color == 2) Color.WHITE else rgb(255, 233, 176), (255 * a).toInt()))
-            c.drawText(t.text, vw / 2f, ty2, tp)
+            c.drawText(t.text, uw / 2f, ty2, tp)
             ty2 -= 30f; i--
         }
         // büyük mesaj (zafer / kalp düştü)
@@ -1035,34 +1243,34 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             val a = Math.min(1f, bigT / 0.8f)
             tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(26f)
             val lines = bt.split("\n")
-            var ly = vh * 0.36f
+            var ly = uh * 0.36f
             for (ln in lines) {
                 tp.setColor(argb((200 * a).toInt(), 0, 0, 0))
-                c.drawText(ln, vw / 2f + 2f, ly + 2f, tp)
+                c.drawText(ln, uw / 2f + 2f, ly + 2f, tp)
                 tp.setColor(withA(if (bigCol == 1) rgb(255, 110, 110) else rgb(255, 215, 106),
                     (255 * a).toInt()))
-                c.drawText(ln, vw / 2f, ly, tp)
+                c.drawText(ln, uw / 2f, ly, tp)
                 ly += 34f
             }
         }
         // hasar flaşı + ölüm tülü
-        if (flash > 0f) { p.setColor(argb((flash * 110).toInt(), 255, 40, 40)); c.drawRect(0f, 0f, vw, vh, p) }
+        if (flash > 0f) { p.setColor(argb((flash * 110).toInt(), 255, 40, 40)); c.drawRect(0f, 0f, uw, uh, p) }
         if (!s.player.alive) {
-            p.setColor(argb(140, 5, 5, 12)); c.drawRect(0f, 0f, vw, vh, p)
+            p.setColor(argb(140, 5, 5, 12)); c.drawRect(0f, 0f, uw, uh, p)
             tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(22f); tp.setColor(rgb(255, 110, 110))
-            c.drawText("Gölgeler seni yakaladı…", vw / 2f, vh * 0.42f, tp)
+            c.drawText("Gölgeler seni yakaladı…", uw / 2f, uh * 0.42f, tp)
             tp.setTextSize(13f); tp.setColor(argb(220, 255, 255, 255))
-            c.drawText("Kalp Taşı'nın yanında uyanıyorsun", vw / 2f, vh * 0.42f + 28f, tp)
+            c.drawText("Kalp Taşı'nın yanında uyanıyorsun", uw / 2f, uh * 0.42f + 28f, tp)
         }
     }
     private fun drawTouchButtons(c: Canvas, s: GameState) {
         // duraklat (sağ-üst)
-        circleBtn(c, vw - 44f, 44f, 28f, argb(170, 12, 18, 28), "II", 13f)
+        circleBtn(c, uw - 44f, 44f, 28f, argb(170, 12, 18, 28), "II", 13f)
         // VUR (büyük), E, B
-        circleBtn(c, vw - 86f, vh - 150f, 56f, argb(200, 201, 47, 63), "VUR", 17f)
-        circleBtn(c, vw - 196f, vh - 116f, 40f, argb(200, 44, 111, 196), "E", 17f)
-        circleBtn(c, vw - 216f, vh - 216f, 36f,
-            if (s.player.buildMode) argb(230, 232, 183, 61) else argb(200, 90, 107, 128), "B", 16f)
+        circleBtn(c, uw - 88f, uh - 124f, 58f, argb(205, 201, 47, 63), "SALDIR", 16f)
+        circleBtn(c, uw - 206f, uh - 98f, 44f, argb(205, 44, 111, 196), "KULLAN", 12f)
+        circleBtn(c, uw - 188f, uh - 212f, 40f,
+            if (s.player.buildMode) argb(235, 232, 183, 61) else argb(205, 90, 107, 128), "İNŞA", 13f)
         // joystick
         if (joyId != -1) {
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3f)
@@ -1095,49 +1303,51 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         c.drawText(label, cx, y + 35f, tp)
         btnRects.add(Pair(r, id))
     }
-    private fun drawMenu(c: Canvas) {
+    private fun drawMenu(c: Canvas) { c.save(); c.scale(us, us); drawMenuI(c); c.restore() }
+    private fun drawMenuI(c: Canvas) {
         btnRects.clear()
         // arka plan: koyu orman silüeti
-        p.setColor(rgb(10, 18, 34)); c.drawRect(0f, 0f, vw, vh * 0.6f, p)
-        p.setColor(rgb(16, 46, 32)); c.drawRect(0f, vh * 0.6f, vw, vh, p)
+        p.setColor(rgb(10, 18, 34)); c.drawRect(0f, 0f, uw, uh * 0.6f, p)
+        p.setColor(rgb(16, 46, 32)); c.drawRect(0f, uh * 0.6f, uw, uh, p)
         var i = 0
         while (i < 14) {
             val hx = ((i * 2654435761L) and 0xFFFF) / 65535f
-            tri(c, hx * vw, vh, 60f + hx * 70f, 90f + (1f - hx) * 150f, rgb(8, 24, 15))
+            tri(c, hx * uw, uh, 60f + hx * 70f, 90f + (1f - hx) * 150f, rgb(8, 24, 15))
             i++
         }
         // süzülen ateş böcekleri
         i = 0
         while (i < 18) {
             val ph = uiT * 0.5f + i * 0.7f
-            val fx = ((i * 97) % 100) / 100f * vw + sinF(ph) * 30f
-            val fy = vh - ((uiT * 16f + i * 67f) % (vh + 40f))
+            val fx = ((i * 97) % 100) / 100f * uw + sinF(ph) * 30f
+            val fy = uh - ((uiT * 16f + i * 67f) % (uh + 40f))
             p.setColor(argb((90 + sinF(ph * 2f) * 70).toInt(), 255, 230, 140))
             c.drawCircle(fx, fy, 2.4f, p)
             i++
         }
         tp.setTextAlign(Paint.Align.CENTER)
         tp.setTextSize(44f); tp.setColor(argb(180, 0, 0, 0))
-        c.drawText("KAYIP KRALLIK", vw / 2f + 3f, vh * 0.27f + 3f, tp)
+        c.drawText("KAYIP KRALLIK", uw / 2f + 3f, uh * 0.27f + 3f, tp)
         tp.setColor(rgb(255, 215, 106))
-        c.drawText("KAYIP KRALLIK", vw / 2f, vh * 0.27f, tp)
+        c.drawText("KAYIP KRALLIK", uw / 2f, uh * 0.27f, tp)
         tp.setTextSize(13f); tp.setColor(argb(190, 255, 255, 255))
-        c.drawText("Kalp Taşı'nı 10 gece boyunca kuşatmadan koru", vw / 2f, vh * 0.27f + 30f, tp)
-        var y = vh * 0.42f
-        panelBtn(c, vw / 2f, y, 300f, "YENİ DÜNYA", 1, false); y += 72f
-        if (SaveStore.has(appCtx)) { panelBtn(c, vw / 2f, y, 300f, "DEVAM ET", 2, false); y += 72f }
+        c.drawText("Kalp Taşı'nı 10 gece boyunca kuşatmadan koru", uw / 2f, uh * 0.27f + 30f, tp)
+        var y = uh * 0.42f
+        panelBtn(c, uw / 2f, y, 300f, "YENİ DÜNYA", 1, false); y += 72f
+        if (SaveStore.has(appCtx)) { panelBtn(c, uw / 2f, y, 300f, "DEVAM ET", 2, false); y += 72f }
         tp.setTextSize(11f); tp.setColor(argb(140, 255, 255, 255))
-        c.drawText("Tek dosya çekirdek · SurfaceView · motorsuz saf Kotlin", vw / 2f, vh - 28f, tp)
+        c.drawText("Tek dosya çekirdek · SurfaceView · motorsuz saf Kotlin", uw / 2f, uh - 28f, tp)
     }
     private fun drawPause(c: Canvas) {
         btnRects.clear()
-        p.setColor(argb(170, 5, 8, 14)); c.drawRect(0f, 0f, vw, vh, p)
+        p.setColor(argb(170, 5, 8, 14)); c.drawRect(0f, 0f, uw, uh, p)
         tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(30f); tp.setColor(rgb(255, 215, 106))
-        c.drawText("MOLA", vw / 2f, vh * 0.3f, tp)
-        var y = vh * 0.38f
-        panelBtn(c, vw / 2f, y, 300f, "DEVAM ET", 3, false); y += 72f
-        panelBtn(c, vw / 2f, y, 300f, "KAYDET", 4, false); y += 72f
-        panelBtn(c, vw / 2f, y, 300f, "ANA MENÜ", 5, true)
+        c.drawText("MOLA", uw / 2f, uh * 0.3f, tp)
+        var y = uh * 0.38f
+        panelBtn(c, uw / 2f, y, 300f, "DEVAM ET", 3, false); y += 72f
+        panelBtn(c, uw / 2f, y, 300f, "KAYDET", 4, false); y += 72f
+        panelBtn(c, uw / 2f, y, 300f, "ANA MENÜ", 5, true)
+        panelBtn(c, uw / 2f, y + 66f, 300f, "Yakınlık: " + arrayOf("Yakın", "Orta", "Uzak")[zoomMode], 6, false)
     }
 
     /* ════════════ DOKUNUŞ ════════════ */
@@ -1146,14 +1356,15 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
             val idx = ev.getActionIndex()
             val x = ev.getX(idx); val y = ev.getY(idx); val id = ev.getPointerId(idx)
-            if (mode != M_PLAY) { tapUI(x, y); return true }
+            val ux = x / us; val uy = y / us              // UI sanal tuval koordinatı
+            if (mode != M_PLAY) { tapUI(ux, uy); return true }
             val g = game ?: return true
             if (chatOpen || invOpen) {                   // panel modali: dokunuş panele gider
                 var k = 0
                 while (k < msgRects.size) {
                     val e2 = msgRects[k]
-                    if (x >= e2.first.left && x <= e2.first.right &&
-                        y >= e2.first.top && y <= e2.first.bottom) {
+                    if (ux >= e2.first.left && ux <= e2.first.right &&
+                        uy >= e2.first.top && uy <= e2.first.bottom) {
                         snd.play("click")
                         if (e2.second == -1) { chatOpen = false; invOpen = false }
                         else if (e2.second == 100) g.craftClub()
@@ -1164,28 +1375,28 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
                 }
                 chatOpen = false; invOpen = false; return true
             }
-            if (hit(x, y, 56f, vh * 0.40f, 42f)) { chatOpen = true; snd.play("click"); return true }
-            if (x >= hotbarRect.left && x <= hotbarRect.right &&
-                y >= hotbarRect.top && y <= hotbarRect.bottom) {
+            if (hit(ux, uy, 56f, uh * 0.40f, 42f)) { chatOpen = true; snd.play("click"); return true }
+            if (ux >= hotbarRect.left && ux <= hotbarRect.right &&
+                uy >= hotbarRect.top && uy <= hotbarRect.bottom) {
                 invOpen = true; snd.play("click"); return true
             }
             if (g.s.player.buildMode) {                  // inşa tip barı
                 var k = 0
                 while (k < buildRects.size) {
                     val e2 = buildRects[k]
-                    if (x >= e2.first.left && x <= e2.first.right &&
-                        y >= e2.first.top && y <= e2.first.bottom) {
+                    if (ux >= e2.first.left && ux <= e2.first.right &&
+                        uy >= e2.first.top && uy <= e2.first.bottom) {
                         g.s.player.buildSel = e2.second; snd.play("click"); return true
                     }
                     k++
                 }
             }
-            if (hit(x, y, vw - 44f, 44f, 34f)) { mode = M_PAUSE; snd.play("click"); return true }
-            if (hit(x, y, vw - 86f, vh - 150f, 62f)) { atkHeld = true; atkId = id; g.tapAttack(); return true }
-            if (hit(x, y, vw - 196f, vh - 116f, 46f)) { g.tapInteract(); return true }
-            if (hit(x, y, vw - 216f, vh - 216f, 42f)) { g.tapBuild(); snd.play("click"); return true }
+            if (hit(ux, uy, uw - 44f, 44f, 36f)) { mode = M_PAUSE; snd.play("click"); return true }
+            if (hit(ux, uy, uw - 88f, uh - 124f, 64f)) { atkHeld = true; atkId = id; g.tapAttack(); return true }
+            if (hit(ux, uy, uw - 206f, uh - 98f, 50f)) { g.tapInteract(); return true }
+            if (hit(ux, uy, uw - 188f, uh - 212f, 46f)) { g.tapBuild(); snd.play("click"); return true }
             if (x < vw * 0.55f && joyId == -1) {
-                joyId = id; joyOx = x; joyOy = y; joyVx = 0f; joyVy = 0f
+                joyId = id; joyOx = ux; joyOy = uy; joyVx = 0f; joyVy = 0f
             }
             return true
         }
@@ -1193,7 +1404,7 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             if (joyId != -1) {
                 val i = ev.findPointerIndex(joyId)
                 if (i >= 0) {
-                    var dx = ev.getX(i) - joyOx; var dy = ev.getY(i) - joyOy
+                    var dx = ev.getX(i) / us - joyOx; var dy = ev.getY(i) / us - joyOy
                     val d = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
                     if (d < 66f * 0.18f) { joyVx = 0f; joyVy = 0f }   // ölü bölge
                     else {
@@ -1232,6 +1443,12 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
                     3 -> mode = M_PLAY
                     4 -> { saveNow(); toastQ.add(Tst("Oyun kaydedildi ✓", 0)) }
                     5 -> { saveNow(); game = null; mode = M_MENU }
+                    6 -> {
+                        zoomMode = (zoomMode + 1) % 3
+                        appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE)
+                            .edit().putInt("zoom", zoomMode).apply()
+                        applyZoom()
+                    }
                 }
                 return
             }

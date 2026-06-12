@@ -84,3 +84,16 @@ java -jar smoke.jar
 ## Bilinen kapsam (v2 listesi)
 Minimap, yağmur ve üç-NPC görev zinciri web sürümünde var, native v1'de bilinçli
 dışarıda — çekirdek krallık döngüsü (kuşatma/inşa/yağma/Ayla/fauna/zafer) tam.
+
+## v2.2 — Mobil ölçek + sprite hattı
+- **Kamera**: HTML kadrajı varsayılan (kısa kenara ~10.5 karo). Mola menüsünden
+  **Yakınlık: Yakın/Orta/Uzak** — kalıcı ayar.
+- **UI ölçeği**: tüm arayüz yoğunluk-duyarlı büyür (420dp sanal tuval) —
+  telefonda okunur barlar, büyük **SALDIR/KULLAN/İNŞA**, ikonlu 6'lı hotbar,
+  sağ üstte **minimap** (yapılar/kalp/gece gölgeleri işaretli).
+- **Yüzme**: yan profil **kurbağalama** — kol süpürmesi, makas tekme, köpük.
+- **Sprite hattı**: `app/src/main/assets/sprites/` içine
+  `docs/SPRITE-PROMPTS.md` şartnamesiyle PNG at → otomatik kullanılır,
+  yoksa prosedürel çizim sürer.
+- **v2.3**: Yapı + ağaç/kaya/çalı sprite kancaları (`build_*`, `tree_*`, `rock_*`, `bush`); prosedürel yapılar kara-fantezi sayfa kompozisyonuna çekildi (tuğla/mazgal/sancak/kemer). Stil-kilitli prompt eki: `docs/SPRITE-PROMPTS.md` v2 bölümü.
+- **v2.4**: Blender→render→boya hattı kanıtlandı; ilk üretim varlığı build_stonewall.png assets klasöründe (tools/blender/).
