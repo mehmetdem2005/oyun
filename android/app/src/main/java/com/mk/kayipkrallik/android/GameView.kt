@@ -20,6 +20,7 @@ import com.mk.kayipkrallik.core.Critter
 import com.mk.kayipkrallik.core.Game
 import com.mk.kayipkrallik.core.GameState
 import com.mk.kayipkrallik.core.K
+import com.mk.kayipkrallik.core.Player
 import com.mk.kayipkrallik.core.Shadow
 import com.mk.kayipkrallik.core.key
 
@@ -179,7 +180,7 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             g.chatPort = object : ChatPort { override fun send(text: String, who: Int) { } }
         if (atkHeld) g.tapAttack()                      // basılı tut = seri vuruş (çekirdek cd'li)
         g.setDir(joyVx, joyVy)
-        if (Math.abs(joyVx) + Math.abs(joyVy) > 0.05f) wt += dt * 9f
+        if (Math.abs(joyVx) + Math.abs(joyVy) > 0.05f) wt += dt * 11f
         if (!chatOpen && !invOpen) g.update(dt)          // paneller oyunu dondurur
         val s = g.s
         var i = 0
@@ -461,42 +462,20 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             c.drawRect(x - 8f, y - 36f, x - 8f + 16f * (hitsLeft / mx), y - 34f, p)
         }
     }
+    /* KALP TAŞI — ilk HTML birebir: iki katlı gri kaide + süzülen altın elmas */
     private fun drawHeart(c: Canvas, s: GameState) {
         val h = s.heart
-        if (!h.alive) { p.setColor(argb(120, 60, 50, 80)); c.drawCircle(h.x, h.y - 8f, 10f, p); return }
-        val x = h.x; val y = h.y
-        val pul = sinF(s.t * 2.2f) * 0.5f + 0.5f
-        shadowE(c, x, y + 4f, 30f, 10f)
-        var k = 0                                        // zemin rün halkası: 8 işaret döner
-        while (k < 8) {
-            val a = s.t * 0.35f + k * 0.785f
-            val rx = x + Math.cos(a.toDouble()).toFloat() * 26f
-            val ry = y + 4f + Math.sin(a.toDouble()).toFloat() * 12f
-            p.setColor(argb((90 + pul * 70f).toInt(), 255, 215, 106))
-            c.save(); c.translate(rx, ry); c.rotate(a * 57.3f)
-            c.drawRect(-2.6f, -1.1f, 2.6f, 1.1f, p); c.restore()
-            k++
-        }
-        p.setColor(rgb(96, 84, 70)); c.drawRoundRect(RectF(x - 14f, y - 4f, x + 14f, y + 7f), 4f, 4f, p)
-        p.setColor(rgb(70, 60, 50)); c.drawRect(x - 10f, y - 2f, x + 10f, y, p)
-        c.save(); c.translate(x, y - 16f); c.rotate(45f)  // kristal
-        p.setColor(rgb(255, 215, 106)); c.drawRoundRect(RectF(-9f, -9f, 9f, 9f), 3f, 3f, p)
-        p.setColor(argb(200, 255, 240, 180)); c.drawRoundRect(RectF(-9f, -9f, 2f, 2f), 3f, 3f, p)
-        p.setColor(withA(Color.WHITE, (120 + pul * 100f).toInt())); c.drawRect(-3f, -7f, -1f, 3f, p)
+        shadowE(c, h.x, h.y + 2f, 16f, 6f)
+        p.setColor(if (h.alive) rgb(126, 134, 148) else rgb(74, 81, 88))
+        c.drawRect(h.x - 14f, h.y - 8f, h.x + 14f, h.y + 4f, p)
+        p.setColor(if (h.alive) rgb(168, 176, 189) else rgb(90, 97, 109))
+        c.drawRect(h.x - 10f, h.y - 16f, h.x + 10f, h.y - 7f, p)
+        val fl = if (h.alive) sinF(s.t * 2.4f) * 3f else 0f
+        c.save(); c.translate(h.x, h.y - 26f + fl); c.rotate(45f)
+        p.setColor(if (h.alive) rgb(232, 183, 61) else rgb(107, 90, 38))
+        c.drawRect(-6f, -6f, 6f, 6f, p)
+        if (h.alive) { p.setColor(rgb(255, 241, 168)); c.drawRect(-2f, -2f, 2f, 2f, p) }
         c.restore()
-        var m = 0                                        // 3 yörünge motesi + kuyruk
-        while (m < 3) {
-            val a = s.t * 1.3f + m * 2.094f
-            val mx = x + Math.cos(a.toDouble()).toFloat() * 30f
-            val my = y - 16f + Math.sin(a.toDouble()).toFloat() * 14f
-            p.setColor(argb(90, 255, 220, 120))
-            c.drawCircle(mx - Math.cos(a.toDouble()).toFloat() * 5f, my - Math.sin(a.toDouble()).toFloat() * 2.4f, 1.6f, p)
-            p.setColor(argb(220, 255, 235, 170)); c.drawCircle(mx, my, 2.3f, p)
-            m++
-        }
-        val hr = h.hp / 300f                             // can şeridi
-        p.setColor(argb(160, 0, 0, 0)); c.drawRect(x - 18f, y + 11f, x + 18f, y + 15f, p)
-        p.setColor(rgb(255, 215, 106)); c.drawRect(x - 17f, y + 12f, x - 17f + 34f * Math.max(0f, hr), y + 14f, p)
     }
 
     private fun drawBuild(c: Canvas, s: GameState, b: Build) {
@@ -558,219 +537,180 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         if (b.hp < mx * 0.6f) c.drawLine(x - 8f, y - 16f, x + 6f, y - 4f, p)
         if (b.hp < mx * 0.3f) c.drawLine(x + 8f, y - 20f, x - 4f, y - 8f, p)
     }
-    /* ════ İNSANSI: tek çizici — yön, yürüyüş salınımı, saldırı süpürmesi, YÜZME ════
-       Biçim dili: yuvarlatılmış gövde + top kafa + kapsül uzuvlar; küp yok. */
-    private fun limb(c: Canvas, x: Float, y: Float, ang: Float, len: Float, w: Float, col: Int) {
-        c.save(); c.translate(x, y); c.rotate(ang)
-        p.setColor(col); c.drawRoundRect(RectF(-w, 0f, w, len), w, w, p)
-        c.restore()
-    }
-    private fun drawHumanoid(c: Canvas, s: GameState, x: Float, y: Float,
-                             fx: Float, fy: Float, moving: Boolean, walk: Float,
-                             attackP: Float, swim: Boolean, hasClub: Boolean,
-                             skin: Int, hair: Int, shirt: Int, pants: Int, alpha: Int) {
-        val side = Math.abs(fx) >= Math.abs(fy)
-        val back = !side && fy < 0f
-        val sw = if (moving) sinF(walk) else 0f
-        val bob = if (moving) -Math.abs(sinF(walk)) * 1.7f else sinF(s.t * 1.6f) * 0.7f
-        c.save(); c.translate(x, y)
-        if (side && fx < 0f) c.scale(-1f, 1f)
-        if (swim) {                                      // ── YÜZME ──
-            val str = sinF(s.t * 7f)
-            p.setColor(argb((70 * alpha) / 255, 10, 40, 70))     // su altı silueti
-            c.save(); c.scale(1f, 0.45f); c.drawCircle(0f, 26f, 13f, p); c.restore()
-            p.setColor(withA(shirt, alpha))                       // öne yatık üst gövde
-            c.drawRoundRect(RectF(-8f, -10f + bob, 8f, 4f + bob), 6f, 6f, p)
-            limb(c, -7f, -8f + bob, -70f + str * 55f, 11f, 2.6f, withA(skin, alpha))   // kulaç
-            limb(c, 7f, -8f + bob, -110f - str * 55f, 11f, 2.6f, withA(skin, alpha))
-            p.setColor(withA(skin, alpha)); c.drawCircle(0f, -16f + bob, 6f, p)        // kafa
-            p.setColor(withA(hair, alpha)); c.drawCircle(0f, -18.5f + bob, 5.4f, p)
-            p.setColor(withA(skin, alpha)); c.drawCircle(0f, -15f + bob, 5.2f, p)
-            p.setColor(argb((200 * alpha) / 255, 230, 246, 255))                       // su köpüğü
-            c.drawRoundRect(RectF(-12f, 2f + bob, 12f, 5.4f + bob), 3f, 3f, p)
-            c.restore(); return
+    /* ════ İNSANSI — İLK HTML'İN BİREBİR PORTU (fillRect piksel dili) ════
+       Kaynak: kayip-orman drawHuman/drawPlayer. Sopa, baltanın savurma mekaniğini taşır;
+       YÜZME bu dilde yeni tasarlandı (HTML'de su engeldi). */
+    private fun drawHumanRect(c: Canvas, s: GameState, x: Float, y: Float,
+                              fx: Float, fy: Float, moving: Boolean,
+                              shirt: Int, hair: Int, npcIdle: Boolean, alpha: Int) {
+        shadowE(c, x, y + 1f, 10f, 4f)
+        val lw = if (moving) sinF(wt) * 3f else 0f
+        val bobY = if (moving) -Math.abs(sinF(wt)) * 1.6f
+                   else if (npcIdle) sinF(s.t * 2f + x) * 0.8f else 0f
+        c.save(); c.translate(x, y + bobY)
+        p.setColor(withA(rgb(39, 64, 94), alpha))                    // bacaklar (yürüyüş kayması)
+        c.drawRect(-6f + clampF(lw, -3f, 3f), -9f, -1f + clampF(lw, -3f, 3f), 0f, p)
+        c.drawRect(1f - clampF(lw, -3f, 3f), -9f, 6f - clampF(lw, -3f, 3f), 0f, p)
+        p.setColor(withA(shirt, alpha)); c.drawRect(-7f, -21f, 7f, -8f, p)
+        p.setColor(argb((64 * alpha) / 255, 0, 0, 0)); c.drawRect(-7f, -10f, 7f, -8f, p)
+        p.setColor(withA(rgb(242, 192, 140), alpha)); c.drawRect(-6f, -32f, 6f, -21f, p)
+        p.setColor(withA(hair, alpha))
+        if (fy < -0.6f) c.drawRect(-6f, -32f, 6f, -23f, p)           // arkadan bakış: saç dolu
+        else {
+            c.drawRect(-6f, -32f, 6f, -28f, p)                       // saç kapağı + favoriler
+            c.drawRect(-6f, -28f, -4f, -24f, p); c.drawRect(4f, -28f, 6f, -24f, p)
+            val ex = clampF(fx * 2.5f, -2.5f, 2.5f)
+            p.setColor(withA(rgb(29, 37, 48), alpha))                // gözler bakış yönüne kayar
+            c.drawRect(-3f + ex, -26f, -1f + ex, -23.5f, p)
+            c.drawRect(2f + ex, -26f, 4f + ex, -23.5f, p)
         }
-        shadowE(c, 0f, 1f, 15f, 5f)
-        limb(c, -3.4f, -10f, sw * 24f, 10f, 2.8f, withA(pants, alpha))                 // bacaklar
-        limb(c, 3.4f, -10f, -sw * 24f, 10f, 2.8f, withA(pants, alpha))
-        limb(c, -6.5f, -19f + bob, if (attackP > 0f) 0f else sw * -28f, 11f, 2.4f, withA(skin, alpha))
-        p.setColor(withA(shirt, alpha))                                                // gövde
-        c.drawRoundRect(RectF(-7.5f, -23f + bob, 7.5f, -8f + bob), 5f, 5f, p)
-        p.setColor(argb((60 * alpha) / 255, 0, 0, 0))
-        c.drawRoundRect(RectF(-7.5f, -12f + bob, 7.5f, -8f + bob), 4f, 4f, p)
-        p.setColor(argb((220 * alpha) / 255, 70, 52, 38))
-        c.drawRect(-7.5f, -11.4f + bob, 7.5f, -9.6f + bob, p)                          // kemer
-        if (attackP > 0f) {                              // ön kol + SOPA süpürmesi
-            val swing = -95f + (1f - attackP) * 150f
-            limb(c, 6.5f, -19f + bob, swing, 11f, 2.4f, withA(skin, alpha))
-            if (hasClub) {
-                c.save(); c.translate(6.5f, -19f + bob); c.rotate(swing)
-                p.setColor(withA(rgb(126, 84, 46), alpha))
-                c.drawRoundRect(RectF(-2.2f, 9f, 2.2f, 24f), 2.2f, 2.2f, p)
-                p.setColor(withA(rgb(98, 64, 34), alpha)); c.drawCircle(0f, 23f, 3.6f, p)
-                c.restore()
-            }
-        } else limb(c, 6.5f, -19f + bob, sw * 28f, 11f, 2.4f, withA(skin, alpha))
-        p.setColor(withA(skin, alpha)); c.drawCircle(0f, -29f + bob, 6.4f, p)          // kafa
-        p.setColor(withA(hair, alpha)); c.drawCircle(0f, -31.6f + bob, 5.8f, p)        // saç kapağı
-        if (!back) {
-            p.setColor(withA(skin, alpha)); c.drawCircle(0f, -28f + bob, 5.6f, p)
-            p.setColor(argb(alpha, 34, 30, 30))
-            if (side) c.drawCircle(2.6f, -29f + bob, 1.2f, p)
-            else { c.drawCircle(-2.2f, -29f + bob, 1.2f, p); c.drawCircle(2.2f, -29f + bob, 1.2f, p) }
-        } else { p.setColor(withA(hair, alpha)); c.drawCircle(0f, -28.6f + bob, 5.9f, p) }
         c.restore()
     }
 
     private fun drawPlayer(c: Canvas, s: GameState) {
         val pl = s.player
         if (!pl.alive) return
-        drawHumanoid(c, s, pl.x, pl.y, pl.fx, pl.fy,
-            Math.abs(joyVx) + Math.abs(joyVy) > 0.05f, wt,
-            if (pl.attackT > 0f) pl.attackT / 0.18f else 0f, pl.swim,
-            (pl.inv["club"] ?: 0) > 0,
-            rgb(242, 198, 152), rgb(56, 40, 32), rgb(202, 92, 58), rgb(50, 60, 92), 255)
-        if (pl.buildMode && !pl.swim) {                  // inşa modunda baş üstü işaret
-            p.setColor(argb(230, 232, 183, 61)); c.drawCircle(pl.x, pl.y - 38f, 3.2f, p)
+        if (pl.swim) { drawSwimmer(c, s, pl); return }
+        val mv = Math.abs(joyVx) + Math.abs(joyVy) > 0.05f
+        drawHumanRect(c, s, pl.x, pl.y, pl.fx, pl.fy, mv,
+            rgb(62, 127, 208), rgb(80, 50, 23), false, 255)          // HTML mavisi + kahve saç
+        if ((pl.inv["club"] ?: 0) > 0) {                             // SOPA: balta savurma mekaniği
+            val rot = if (pl.attackT > 0f) (-86f + (1f - pl.attackT / 0.18f) * 143f) else -37f
+            val ang = Math.atan2(pl.fy.toDouble(), pl.fx.toDouble()).toFloat() * 57.296f
+            c.save(); c.translate(pl.x + pl.fx * 7f, pl.y - 15f + pl.fy * 3f)
+            c.rotate(ang + rot)
+            p.setColor(rgb(122, 78, 42)); c.drawRect(0f, -1.5f, 13f, 1.5f, p)
+            p.setColor(rgb(92, 60, 32)); c.drawCircle(13.5f, 0f, 3.4f, p)
+            c.restore()
         }
+        if (pl.buildMode) { p.setColor(argb(230, 232, 183, 61)); c.drawCircle(pl.x, pl.y - 38f, 3f, p) }
+    }
+
+    /* YÜZME — aynı piksel dili: su üstünde yarım gövde + dönüşümlü 5×3 kulaç + köpük */
+    private fun drawSwimmer(c: Canvas, s: GameState, pl: Player) {
+        val str = sinF(s.t * 7f)
+        p.setColor(argb(90, 10, 40, 70))
+        c.save(); c.translate(pl.x, pl.y + 7f); c.scale(1f, 0.42f)
+        c.drawCircle(0f, 0f, 12f, p); c.restore()                    // su altı silueti
+        c.save(); c.translate(pl.x, pl.y + sinF(s.t * 3f) * 1.2f)
+        p.setColor(rgb(62, 127, 208)); c.drawRect(-7f, -13f, 7f, -4f, p)
+        p.setColor(rgb(242, 192, 140))                               // kulaçlar
+        if (str > 0f) c.drawRect(-12f, -16f - str * 4f, -7f, -13f - str * 4f, p)
+        else c.drawRect(-12f, -10f, -7f, -7f, p)
+        if (str <= 0f) c.drawRect(7f, -16f + str * 4f, 12f, -13f + str * 4f, p)
+        else c.drawRect(7f, -10f, 12f, -7f, p)
+        p.setColor(rgb(242, 192, 140)); c.drawRect(-6f, -24f, 6f, -13f, p)
+        p.setColor(rgb(80, 50, 23)); c.drawRect(-6f, -24f, 6f, -20f, p)
+        val ex = clampF(pl.fx * 2.5f, -2.5f, 2.5f)
+        p.setColor(rgb(29, 37, 48))
+        c.drawRect(-3f + ex, -19f, -1f + ex, -16.5f, p)
+        c.drawRect(2f + ex, -19f, 4f + ex, -16.5f, p)
+        p.setColor(argb(200, 230, 246, 255)); c.drawRect(-12f, -5f, 12f, -2.4f, p)
+        c.restore()
     }
 
     private fun drawVillager(c: Canvas, s: GameState) {
         val v = s.villager ?: return
         if (v.state == K.VS_CAGED) {
-            drawHumanoid(c, s, v.x, v.y, 0f, 1f, false, 0f, 0f, false, false,
-                rgb(238, 192, 150), rgb(214, 178, 92), rgb(94, 128, 86), rgb(70, 62, 56), 235)
-            p.setColor(rgb(108, 82, 50)); var k = -2     // kafes çubukları
+            drawHumanRect(c, s, v.x, v.y, 0f, 1f, false, rgb(215, 111, 163), rgb(58, 38, 20), true, 235)
+            p.setColor(rgb(108, 82, 50)); var k = -2                 // kafes çubukları
             while (k <= 2) { c.drawRect(v.x + k * 7f - 1.4f, v.y - 38f, v.x + k * 7f + 1.4f, v.y + 4f, p); k++ }
             c.drawRect(v.x - 16f, v.y - 40f, v.x + 16f, v.y - 36f, p)
             c.drawRect(v.x - 16f, v.y, v.x + 16f, v.y + 4f, p)
             drawTag(c, v.x, v.y - 50f, "E: Kurtar")
             return
         }
-        drawHumanoid(c, s, v.x, v.y, if (v.tgtX < v.x) -1f else 1f, 0.4f,
-            v.hasTgt, s.t * 8f + 1f, 0f, false, false,
-            rgb(238, 192, 150), rgb(214, 178, 92), rgb(94, 128, 86), rgb(70, 62, 56), 255)
-        if (v.carry > 0) {                               // omuzdaki kütük
+        drawHumanRect(c, s, v.x, v.y, if (v.tgtX < v.x) -1f else 1f, 0.4f, v.hasTgt,
+            rgb(215, 111, 163), rgb(58, 38, 20), true, 255)          // Ayla: HTML pembesi
+        if (v.carry > 0) {
             c.save(); c.translate(v.x, v.y - 30f); c.rotate(-18f)
-            p.setColor(rgb(138, 92, 52)); c.drawRoundRect(RectF(-11f, -3f, 11f, 3f), 3f, 3f, p)
+            p.setColor(rgb(110, 74, 42)); c.drawRect(-11f, -3f, 11f, 3f, p)
             p.setColor(rgb(190, 152, 104)); c.drawCircle(11f, 0f, 2.8f, p)
             c.restore()
         }
         drawTag(c, v.x, v.y - 46f, "Ayla")
     }
 
-    /* ── GÖLGE: çekirdek küre + 3 kıvrık duman teli + nabızlı gözler ── */
+    /* GÖLGE — HTML drawEnemy birebir: wob'lu mürekkep elipsi + mor taç + göz şeritleri */
     private fun drawShadow(c: Canvas, s: GameState, e: Shadow) {
-        c.save(); c.translate(e.x, e.y); c.scale(e.scale, e.scale)
-        shadowE(c, 0f, 2f, 16f, 5f)
-        var tn = 0
-        while (tn < 3) {
-            var seg = 0
-            while (seg < 3) {
-                val wob = sinF(s.t * 4f + e.ph + tn * 1.7f + seg * 0.9f)
-                val txp = Math.cos((tn * 2.1f + 1f + wob * 0.5f).toDouble()).toFloat() * (6f + seg * 5f)
-                p.setColor(argb(150 - seg * 38, 96, 44, 168))
-                c.drawCircle(txp, -8f - seg * 7f + wob * 2.5f, 5.5f - seg * 1.3f, p)
-                seg++
-            }
-            tn++
+        val a = (255f * Math.min(1f, e.scale)).toInt()
+        val wob = sinF(s.t * 6f + e.ph) * 0.14f + 1f
+        p.setColor(argb((64 * a) / 255, 90, 50, 160))
+        c.save(); c.translate(e.x, e.y + 1f); c.scale(1f, 5f / 12f)
+        c.drawCircle(0f, 0f, 12f, p); c.restore()
+        c.save(); c.translate(e.x, e.y - 9f); c.scale(1f, (13f / wob) / (11f * wob))
+        p.setColor(withA(rgb(34, 20, 64), a)); c.drawCircle(0f, 0f, 11f * wob, p)
+        c.restore()
+        var sg = 0; var qx0 = 0f; var qy0 = 0f                       // taç yayı: 6 doğru parçası
+        while (sg <= 6) {
+            val th = (198f + sg * 24f) * 0.017453f
+            val qx = e.x + Math.cos(th.toDouble()).toFloat() * 9f * wob
+            val qy = e.y - 11f + Math.sin(th.toDouble()).toFloat() * 9f * wob
+            if (sg > 0) c.drawLine(qx0, qy0, qx, qy, p2(2f, withA(rgb(58, 39, 102), a)))
+            qx0 = qx; qy0 = qy; sg++
         }
-        p.setColor(argb(80, 70, 24, 130)); c.drawCircle(0f, -9f, 13.5f, p)
-        p.setColor(argb(205, 96, 44, 168)); c.drawCircle(0f, -9f, 10.5f, p)
-        p.setColor(argb(235, 130, 70, 210)); c.drawCircle(-2.5f, -11.5f, 6f, p)
-        val eg = (170 + sinF(s.t * 7f + e.ph) * 70f).toInt()
-        p.setColor(argb(eg, 244, 240, 255))
-        c.drawCircle(-3.4f, -10f, 1.9f, p); c.drawCircle(3.4f, -10f, 1.9f, p)
-        if (e.stolen.isNotEmpty()) {
-            c.save(); c.translate(0f, -26f + sinF(s.t * 5f) * 2f); c.rotate(45f)
-            p.setColor(rgb(255, 215, 106)); c.drawRect(-4f, -4f, 4f, 4f, p)
+        p.setColor(withA(rgb(242, 240, 255), a))                     // dik göz şeritleri
+        c.drawRect(e.x - 6f, e.y - 13f, e.x - 2f, e.y - 10.6f, p)
+        c.drawRect(e.x + 2f, e.y - 13f, e.x + 6f, e.y - 10.6f, p)
+        if (e.stolen.isNotEmpty()) {                                 // sırtlanan ganimet
+            c.save(); c.translate(e.x, e.y - 28f + sinF(s.t * 5f) * 2f); c.rotate(45f)
+            p.setColor(withA(rgb(232, 183, 61), a)); c.drawRect(-4f, -4f, 4f, 4f, p)
             c.restore()
         }
-        c.restore()
     }
 
-    /* ── FAUNA: dört tür, tür-özel iskelet animasyonu ── */
+    /* FAUNA — HTML drawCritter birebir; domuz aynı dilde eklendi */
     private fun drawCritter(c: Canvas, s: GameState, cr: Critter) {
-        val trot = sinF((s.t + cr.ph) * 10f)
-        c.save(); c.translate(cr.x, cr.y)
-        if (cr.wx < 0f) c.scale(-1f, 1f)
+        val x = cr.x; val y = cr.y
+        c.save()
+        if (cr.wx < 0f) { c.translate(x, y); c.scale(-1f, 1f); c.translate(-x, -y) }
         if (cr.kind == K.CK_RABBIT) {
-            val hop = if (cr.moving) Math.abs(sinF((s.t + cr.ph) * 9f)) else 0f
-            shadowE(c, 0f, 1f, 9f, 3f)
-            c.translate(0f, -hop * 6f)
-            c.save(); c.scale(1f, 1f - hop * 0.22f)      // squash-stretch
-            p.setColor(rgb(196, 186, 172)); c.drawRoundRect(RectF(-7f, -10f, 7f, 0f), 6f, 6f, p)
-            c.restore()
-            p.setColor(rgb(232, 226, 216)); c.drawCircle(-6.4f, -3f, 2.2f, p)
-            limb(c, 3.4f, -12.4f, -14f - hop * 26f, 7.5f, 1.8f, rgb(186, 176, 162))    // kulak gecikmesi
-            limb(c, 5.4f, -12f, 4f - hop * 22f, 7f, 1.8f, rgb(186, 176, 162))
-            p.setColor(rgb(196, 186, 172)); c.drawCircle(5f, -9.4f, 4f, p)
-            p.setColor(rgb(30, 26, 26)); c.drawCircle(6.6f, -10f, 1f, p)
+            val hop = if (cr.moving) Math.abs(sinF((s.t + cr.ph) * 10f)) * 4f else 0f
+            shadowE(c, x, y + 1f, 7f, 3f)
+            p.setColor(rgb(168, 176, 189))
+            c.drawCircle(x, y - 5f - hop, 5f, p); c.drawCircle(x + 4f, y - 8f - hop, 3f, p)
+            c.drawRect(x + 2f, y - 14f - hop, x + 4f, y - 9f - hop, p)
+            c.drawRect(x + 5f, y - 14f - hop, x + 7f, y - 9f - hop, p)
+            p.setColor(rgb(255, 241, 168)); c.drawCircle(x - 5f, y - 5f - hop, 2f, p)
         } else if (cr.kind == K.CK_DEER) {
-            shadowE(c, 0f, 1f, 14f, 4f)
-            val graze = if (!cr.moving) (sinF(s.t * 1.1f + cr.ph) * 0.5f + 0.5f) else 0f
-            var lg = 0
-            while (lg < 4) {                              // çapraz tırıs
-                limb(c, -8f + lg * 5.2f, -8f, if (cr.moving) (if (lg % 2 == 0) trot else -trot) * 18f else 0f,
-                    9f, 1.7f, rgb(126, 92, 58))
-                lg++
-            }
-            p.setColor(rgb(154, 112, 70)); c.drawRoundRect(RectF(-11f, -17f, 9f, -7f), 6f, 6f, p)
-            if (cr.moving) { p.setColor(rgb(240, 234, 224)); c.drawCircle(-11.4f, -14f + trot * 1.4f, 2.4f, p) }
-            c.save(); c.translate(9f, -15f); c.rotate(-34f + graze * 78f)               // otlayan boyun
-            p.setColor(rgb(150, 108, 66)); c.drawRoundRect(RectF(-2.2f, -10f, 2.2f, 2f), 2.2f, 2.2f, p)
-            p.setColor(rgb(146, 104, 64)); c.drawRoundRect(RectF(-3f, -15f, 3.4f, -8f), 3f, 3f, p)
-            c.drawLine(0f, -14f, -3.4f, -20f, p2(1.6f, rgb(94, 70, 46)))                // boynuz
-            c.drawLine(-1.8f, -17f, -5f, -19f, p2(1.4f, rgb(94, 70, 46)))
-            c.drawLine(1f, -14f, 4f, -20f, p2(1.6f, rgb(94, 70, 46)))
-            c.drawLine(2.4f, -17f, 5.6f, -19f, p2(1.4f, rgb(94, 70, 46)))
-            p.setColor(rgb(30, 26, 26)); c.drawCircle(1.6f, -12f, 0.9f, p)
-            c.restore()
+            shadowE(c, x, y + 1f, 10f, 4f)
+            p.setColor(rgb(138, 90, 50))
+            c.drawRect(x - 8f, y - 12f, x + 8f, y - 3f, p)
+            c.drawRect(x + 6f, y - 17f, x + 11f, y - 11f, p)
+            c.drawLine(x + 7f, y - 17f, x + 5f, y - 22f, p2(1.5f, rgb(230, 210, 138)))
+            c.drawLine(x + 10f, y - 17f, x + 12f, y - 22f, p2(1.5f, rgb(230, 210, 138)))
+            p.setColor(rgb(110, 74, 42))
+            val dl = floatArrayOf(-6f, -2f, 3f, 7f); var k = 0
+            while (k < 4) { c.drawRect(x + dl[k], y - 4f, x + dl[k] + 2f, y + 1f, p); k++ }
         } else if (cr.kind == K.CK_BOAR) {
-            shadowE(c, 0f, 1f, 14f, 4.4f)
-            val low = if (cr.chargeT > 0f) 3f else 0f
-            var lg = 0
-            while (lg < 4) {
-                limb(c, -8f + lg * 5f, -6f, if (cr.moving) (if (lg % 2 == 0) trot else -trot) * 16f else 0f,
-                    6.5f, 2f, rgb(70, 52, 40))
-                lg++
-            }
-            p.setColor(rgb(92, 66, 48)); c.drawRoundRect(RectF(-12f, -15f + low * 0.4f, 10f, -4f), 7f, 7f, p)
-            p.setColor(rgb(70, 50, 36)); var b2 = 0      // sırt kılları
-            while (b2 < 4) { c.drawRect(-8f + b2 * 4.4f, -17f + low * 0.4f, -6.4f + b2 * 4.4f, -13.5f, p); b2++ }
-            c.save(); c.translate(10f, -9f + low); c.rotate(low * 5f)
-            p.setColor(rgb(84, 60, 44)); c.drawRoundRect(RectF(-4f, -5f, 6f, 4f), 4f, 4f, p)
-            p.setColor(rgb(120, 88, 64)); c.drawCircle(6f, 0f, 2.6f, p)
-            p.setColor(rgb(238, 232, 220))               // dişler
-            c.drawRect(3.2f, 1.4f, 4.6f, 5.2f, p); c.drawRect(5.6f, 1.4f, 7f, 5.2f, p)
-            p.setColor(if (cr.chargeT > 0f) rgb(255, 90, 70) else rgb(30, 26, 26))
-            c.drawCircle(0.6f, -2.4f, 1.1f, p)
-            c.restore()
-            if (cr.chargeT > 0f) burst(cr.x, cr.y, rgb(150, 130, 104), 1, 30f, 2f, 0.3f)  // toz
-        } else {                                          // KURT
-            shadowE(c, 0f, 1f, 15f, 4.4f)
-            var lg = 0
-            while (lg < 4) {
-                limb(c, -9f + lg * 5.4f, -8f, if (cr.moving) (if (lg % 2 == 0) trot else -trot) * 22f else 0f,
-                    9f, 1.8f, rgb(96, 102, 114))
-                lg++
-            }
-            p.setColor(rgb(126, 134, 148)); c.drawRoundRect(RectF(-12f, -16f, 9f, -6f), 6f, 6f, p)
-            p.setColor(rgb(96, 102, 114)); c.drawRoundRect(RectF(-12f, -16f, 9f, -12f), 5f, 5f, p)
-            c.save(); c.translate(-12f, -13f)             // kuyruk: 2 parçalı salınım
-            c.rotate((if (cr.aggro) 26f else -8f) + sinF(s.t * (if (cr.aggro) 9f else 4f)) * 14f)
-            p.setColor(rgb(96, 102, 114)); c.drawRoundRect(RectF(-9f, -2f, 0f, 2f), 2f, 2f, p)
-            p.setColor(rgb(80, 86, 98)); c.drawCircle(-9f, 0f, 2.4f, p)
-            c.restore()
-            c.save(); c.translate(9f, -14f)
-            p.setColor(rgb(126, 134, 148)); c.drawRoundRect(RectF(-3f, -4f, 8f, 4f), 4f, 4f, p)
-            limb(c, -1f, -5.5f, -24f, 4.5f, 1.6f, rgb(96, 102, 114))                    // kulaklar
-            limb(c, 3f, -5.5f, 18f, 4.5f, 1.6f, rgb(96, 102, 114))
-            if (cr.aggro) {
-                p.setColor(rgb(255, 80, 70)); c.drawCircle(2f, -1.4f, 1.3f, p)          // kor göz
-                p.setColor(rgb(238, 232, 220)); c.drawRect(5.4f, 2.6f, 6.6f, 4.6f, p)   // diş
-            } else { p.setColor(rgb(30, 26, 26)); c.drawCircle(2f, -1.4f, 1f, p) }
-            c.restore()
+            shadowE(c, x, y + 1f, 10f, 4f)
+            p.setColor(rgb(92, 66, 48)); c.drawRect(x - 9f, y - 13f, x + 9f, y - 4f, p)
+            p.setColor(rgb(70, 50, 36))                              // sırt kılları
+            c.drawRect(x - 5f, y - 15f, x - 3f, y - 12f, p)
+            c.drawRect(x - 1f, y - 15f, x + 1f, y - 12f, p)
+            c.drawRect(x + 3f, y - 15f, x + 5f, y - 12f, p)
+            p.setColor(rgb(120, 88, 64)); c.drawRect(x + 7f, y - 11f, x + 12f, y - 6f, p)
+            p.setColor(rgb(238, 232, 220))                           // dişler
+            c.drawRect(x + 8f, y - 5f, x + 9.6f, y - 2f, p)
+            c.drawRect(x + 10.4f, y - 5f, x + 12f, y - 2f, p)
+            p.setColor(rgb(58, 42, 32))
+            val bl = floatArrayOf(-6f, -2f, 3f, 7f); var k = 0
+            while (k < 4) { c.drawRect(x + bl[k], y - 4f, x + bl[k] + 2f, y + 1f, p); k++ }
+            p.setColor(if (cr.chargeT > 0f) rgb(255, 90, 90) else rgb(30, 26, 26))
+            c.drawRect(x + 8f, y - 10f, x + 10f, y - 8f, p)
+            if (cr.chargeT > 0f) burst(x - 12f, y, rgb(150, 130, 104), 1, 30f, 2f, 0.3f)
+        } else {                                                     // KURT
+            shadowE(c, x, y + 1f, 10f, 4f)
+            p.setColor(rgb(126, 134, 148))
+            c.drawRect(x - 8f, y - 11f, x + 8f, y - 3f, p)
+            c.drawRect(x + 6f, y - 15f, x + 12f, y - 10f, p)
+            c.drawRect(x + 7f, y - 18f, x + 9f, y - 15f, p)
+            c.drawRect(x + 10f, y - 18f, x + 12f, y - 15f, p)
+            c.drawRect(x - 12f, y - 13f, x - 8f, y - 10f, p)         // kuyruk
+            p.setColor(rgb(74, 81, 88))
+            val wl = floatArrayOf(-6f, -2f, 3f, 7f); var k = 0
+            while (k < 4) { c.drawRect(x + wl[k], y - 4f, x + wl[k] + 2f, y + 1f, p); k++ }
+            if (cr.aggro) { p.setColor(rgb(255, 90, 90)); c.drawRect(x + 9f, y - 14f, x + 11f, y - 12f, p) }
         }
         c.restore()
     }

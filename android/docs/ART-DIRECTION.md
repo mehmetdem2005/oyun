@@ -1,21 +1,23 @@
-# Fener Karanlığı — Görsel Felsefe
-Bu oyun küplerin değil, **kapsüllerin** dünyasıdır. Her canlı yuvarlatılmış bir gövde,
-top bir kafa ve salınan kapsül uzuvlardan kurulur; köşe yoktur, nefes vardır. Hareket
-asla tek karelik değildir: bacaklar zıt fazlı sinüslerle yürür, kulaklar gövdeden bir
-tık geç gelir, otlayan boyun ağır bir yay çizer. Durağanlıkta bile göğüs kabarır.
-Bu, sayısız iterasyonla ayarlanmış, ustalık isteyen bir ritim dilidir.
+# Görsel Kanon — İlk HTML'in Piksel Dili
+**Düzeltme notu:** v2'de "kapsül/yuvarlak" diye icat edilen stil REDDEDİLDİ ve geri
+alındı. Bu projenin görsel kanonu **kayip-orman.html'in fillRect grammarı**dır;
+her yeni varlık bu dile çevrilerek eklenir, dil değiştirilmez.
 
-Renk iki kutuplu yaşar: fenerin **sıcak altını** (kalp, şafak, iade tostları) ve
-kuşatmanın **mor-mürekkep karanlığı** (gölge telleri, gece tülü). Su üçüncü sestir —
-soğuk mavi üzerinde kayan ince parıltı çizgileri ve yüzücünün ardında açılan
-eliptik halkalar. Hiçbir doku fotoğraf taklidi değildir; her yüzey iki tonla
-(ana + gölgeleme bandı) elde işlenmiş hissi verir.
+## Grammar
+- Birim: keskin `fillRect` blokları + seçilmiş yerlerde daire (yaprak kümeleri, tavşan).
+- İnsan: 12×11 ten kafa, 14×13 gömlek, 5×9 bacaklar; yürüyüş = bacak X-kayması
+  (`sin(walkT·11)·3`), gövde bob'u, gözler bakış yönüne 2.5px kayar; arkadan saç dolu.
+- Oyuncu paleti: gömlek `#3e7fd0`, saç `#503217`, ten `#f2c08c`, bacak `#27405e`.
+- Silah: omuz çapasında `atan2(fy,fx)` + savurma `-86°→+57°` (balta mekaniği; sopa gövdesi).
+- Gölge: `wob = sin(t·6)·0.14+1` ile nefes alan mürekkep elipsi `#221440`,
+  üstte mor taç yayı `#3a2766`, iki dik beyaz göz şeridi.
+- Kalp Taşı: iki katlı gri kaide + 45° döndürülmüş, `sin(t·2.4)·3` ile süzülen
+  altın elmas `#e8b73d` ve `#fff1a8` çekirdek. Süs eklenmez.
+- Fauna: HTML birebir; domuz bu dile çevrilerek eklendi (blok gövde, beyaz diş
+  dikdörtgenleri, şarjda kor göz + toz).
+- YÜZME (HTML'de yoktu): aynı dilde tasarlandı — su üstünde yarım gövde,
+  dönüşümlü 5×3 kulaç blokları, köpük şeridi, eliptik halkalar.
 
-Işık anlatıcıdır: gece, ekranı karartan bir filtre değil, oyuncunun ve kalbin
-etrafında delinen iki sıcak kuyudur. Tehlike yaklaştıkça karanlık fiziksel bir
-malzeme gibi kalınlaşır. Parçacıklar cömert ama disiplinlidir — her darbe, her
-yerleştirme, her ölüm kendi renginde kısa bir kıvılcım bırakır ve kaybolur.
-
-Bu felsefenin ölçütü tektir: ekran görüntüsü tek başına "özenle, saatlerce
-işlenmiş" demelidir. Hiçbir öğe taşmaz, hiçbir yazı bağırmaz; arayüz bile
-yuvarlatılmış, koyu camdan paneller olarak aynı dile katılır.
+## Kural
+Yeni görsel = önce HTML'de karşılığı var mı bak; varsa **porta sadık kal**,
+yoksa yukarıdaki grammar içinde tasarla. "Kendi standardını koymak" yasak.
