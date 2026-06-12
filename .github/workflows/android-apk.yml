@@ -1,12 +1,16 @@
-name: Android APK (saf native — motorsuz)
+name: Android APK (saf native v2)
 
-# Kayıp Krallık'ın saf Kotlin/Android portunu derler. Unreal/Epic imajı GEREKMEZ;
-# standart Android SDK ile ~3-5 dakikada imzalı debug APK üretir.
+# Kayıp Krallık v2 (android/ altındaki :core + :app modülleri).
+# Kalite kapısı: 59 senaryoluk duman testi GEÇMEDEN APK üretilmez.
+# İndirme: repo → Releases → en üstteki build → app-debug.apk (telefondan tek tık).
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths: ["android/**", ".github/workflows/android-apk.yml"]
+
+permissions:
+  contents: write   # Release yayını için
 
 jobs:
   apk:
@@ -18,22 +22,30 @@ jobs:
 
       - name: JDK 17 kur
         uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+        with: { distribution: temurin, java-version: "17" }
 
-      - name: Android SDK kur
-        uses: android-actions/setup-android@v3
+      - name: Gradle kur
+        uses: gradle/actions/setup-gradle@v3
+        with: { gradle-version: "8.9" }
+
+      - name: Duman testi — geçmezse APK yok
+        working-directory: android
+        run: gradle :core:smoke --no-daemon
 
       - name: APK derle (imzalı debug)
         working-directory: android
-        run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: APK'yı artifact yükle
         uses: actions/upload-artifact@v4
         with:
           name: KayipKrallik-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Release yayınla (telefondan tek tık indirme)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Kayıp Krallık — build ${{ github.run_number }}
+          files: android/app/build/outputs/apk/debug/app-debug.apk
