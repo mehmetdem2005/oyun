@@ -36,7 +36,13 @@ class Villager(var x: Float, var y: Float) {
     var tgtX = 0; var tgtY = 0; var hasTgt = false
 }
 
+class Minion(var x: Float, var y: Float, var hp: Float, var lvl: Int, val home: Long) {
+    var ac = 0f                                          // saldırı bekleme
+}
+
 class Build(val t: Int, val tx: Int, val ty: Int) {
+    var lvl = 1                                          // v4: 1..5 seviye
+    var cd = 0f                                          // üretim sayacı
     val x = tx * K.TS + K.TS / 2
     val y = ty * K.TS + K.TS / 2
     var hp = K.B_HP.getValue(t)
@@ -71,7 +77,7 @@ class Snapshot {
     var heartHp = 300f; var heartAlive = true
     val inv = HashMap<String, Int>()
     val harvested = ArrayList<LongArray>()         // [key, kalanSaniye*100]
-    val builds = ArrayList<IntArray>()             // [t,tx,ty,hp,open,ammo]
+    val builds = ArrayList<IntArray>()             // [t,tx,ty,hp,open,ammo,lvl]
     val bags = ArrayList<Pair<FloatArray, HashMap<String, Int>>>()
 }
 
@@ -91,6 +97,7 @@ class GameState(val seed: Int) {
     val critters = ArrayList<Critter>()
     val bags = ArrayList<LootBag>()
     val builds = HashMap<Long, Build>()
+    val minions = ArrayList<Minion>()            // kışla birlikleri (kaydedilmez)
     val harvested = HashMap<Long, Float>()         // key -> yeniden doğum zamanı
     val hitsLeft = HashMap<Long, Int>()            // key -> kalan vuruş
 
@@ -188,7 +195,7 @@ class GameState(val seed: Int) {
         for (e in harvested) if (t < e.value)
             s.harvested.add(longArrayOf(e.key, ((e.value - t) * 100).toLong()))
         for (b in builds.values)
-            s.builds.add(intArrayOf(b.t, b.tx, b.ty, b.hp.toInt(), if (b.open) 1 else 0, b.ammo))
+            s.builds.add(intArrayOf(b.t, b.tx, b.ty, b.hp.toInt(), if (b.open) 1 else 0, b.ammo, b.lvl))
         for (b in bags) s.bags.add(Pair(floatArrayOf(b.x, b.y), HashMap(b.loot)))
         return s
     }
@@ -207,6 +214,7 @@ class GameState(val seed: Int) {
             for (a in s.builds) {
                 val b = Build(a[0], a[1], a[2])
                 b.hp = a[3].toFloat(); b.open = a[4] == 1; b.ammo = a[5]
+                b.lvl = if (a.size > 6) a[6] else 1
                 g.builds[key(a[1], a[2])] = b
             }
             for (p in s.bags) g.spawnBag(p.first[0], p.first[1], p.second)

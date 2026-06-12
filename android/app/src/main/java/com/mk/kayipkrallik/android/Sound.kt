@@ -104,7 +104,9 @@ class Sound {
         } catch (e: Exception) { return null }            // ses yoksa oyun sessiz sürer
     }
 
+    var muted = false
     fun play(name: String) {
+        if (muted) return
         try {
             var tr = cache[name]
             if (tr == null) { tr = build(name) ?: return; cache[name] = tr }

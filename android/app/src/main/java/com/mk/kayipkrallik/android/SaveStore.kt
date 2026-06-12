@@ -87,8 +87,7 @@ object SaveStore {
             val bl = o.getJSONArray("bld")
             for (i in 0 until bl.length()) {
                 val a = bl.getJSONArray(i)
-                s.builds.add(intArrayOf(a.getInt(0), a.getInt(1), a.getInt(2),
-                    a.getInt(3), a.getInt(4), a.getInt(5)))
+                s.builds.add(IntArray(a.length()) { ii -> a.getInt(ii) })  // alan sayısından bağımsız
             }
             val bg = o.getJSONArray("bags")
             for (i in 0 until bg.length()) {

@@ -17,6 +17,11 @@ class Game(val s: GameState) {
     fun tapBuild() { qBld = true }
 
     /* ── Sohbet: çekirdek mesajı kaydeder, port dışarı taşır, Ayla bağlamla yanıtlar ── */
+    private var econT = 0f
+    private var genOk = false
+    private var wDisc = 0
+    private var demK = 0L
+    private var demT = 0f
     var chatPort: ChatPort? = null
     fun quickChat(i: Int) {
         if (i < 0 || i >= K.QCHAT.size) return
@@ -36,6 +41,170 @@ class Game(val s: GameState) {
 
     /* ── ana tik ── */
     fun update(dt: Float) {
+        if (demT > 0f) demT -= dt
+        if (!genOk) {                                    // v4: varsayılan Jeneratör
+            genOk = true
+            if (s.builds.values.none { it.t == K.B_GEN }) {
+                val gx = s.wtX(s.player.x) + 2; val gy = s.wtY(s.player.y) - 2
+                val gb = Build(K.B_GEN, gx, gy); gb.hp = bHp(K.B_GEN, 1)
+                s.builds[key(gx, gy)] = gb
+                if ((s.player.inv["gold"] ?: 0) == 0) s.player.inv["gold"] = 25
+            }
+        }
+        econT += dt                                      // ── EKONOMİ TİKİ (1 sn) ──
+        while (econT >= 1f) {
+            econT -= 1f
+            var cap = 300; var disc = 0
+            for (b in s.builds.values) {
+                if (b.t == K.B_STORE) cap += bRate(K.B_STORE, b.lvl).toInt()
+                if (b.t == K.B_WORKSHOP) disc += bRate(K.B_WORKSHOP, b.lvl).toInt()
+            }
+            wDisc = minOf(20, disc)
+            if (s.player.alive && s.player.hp < 35f && s.takeInv(s.player.inv, "potion", 1)) {
+                s.player.hp = minOf(100f, s.player.hp + 40f)        // akıllı iksir
+                s.toast("⚗ Can iksiri içildi (+40).", 0)
+                s.emit("eat", s.player.x, s.player.y)
+            }
+            var statM = 1f; var gran = 0
+            for (b in s.builds.values) {
+                if (b.t == K.B_STATUE) statM += 0.04f * b.lvl       // heykel: küresel üretim
+                if (b.t == K.B_GRANARY) gran += b.lvl               // ambar: çiftlik bonusu
+            }
+            var gold = s.player.inv["gold"] ?: 0
+            for (b in s.builds.values) {
+                when (b.t) {
+                    K.B_GEN, K.B_MINE -> {
+                        b.cd += bRate(b.t, b.lvl) * statM
+                        if (b.cd >= 1f) {
+                            val a = b.cd.toInt(); b.cd -= a.toFloat()
+                            if (gold < cap) gold = minOf(cap, gold + a)
+                        }
+                    }
+                    K.B_FARM -> {
+                        b.cd += 1f
+                        if (b.cd >= 12f) {
+                            b.cd = 0f
+                            s.addInv(s.player.inv, "berry", bRate(K.B_FARM, b.lvl).toInt() + gran)
+                        }
+                    }
+                    K.B_TEMPLE -> if (dist(b.x, b.y, s.player.x, s.player.y) < 140f)
+                        s.player.hp = minOf(100f, s.player.hp + bRate(K.B_TEMPLE, b.lvl))
+                    K.B_TOWER -> {                  // otomatik ok: menzildeki golgeye
+                        b.cd += 1f
+                        if (b.cd >= 2f) {
+                            var tg0: Shadow? = null
+                            var bd0 = 96f + 18f * b.lvl
+                            for (sh in s.shadows) {
+                                val d0 = dist(sh.x, sh.y, b.x, b.y)
+                                if (d0 < bd0) { bd0 = d0; tg0 = sh }
+                            }
+                            if (tg0 != null) {
+                                b.cd = 0f
+                                tg0.hp -= bRate(K.B_TOWER, b.lvl)
+                                s.emit("hit", tg0.x, tg0.y)
+                                if (tg0.hp <= 0f) s.shadows.remove(tg0)
+                            }
+                        }
+                    }
+                    K.B_TRAP -> {                       // diken: ustune basan yanar
+                        if (b.cd > 0f) b.cd -= 1f
+                        if (b.cd <= 0f) {
+                            var hit0: Shadow? = null
+                            for (sh in s.shadows) {
+                                if (dist(sh.x, sh.y, b.x, b.y) < 26f) { hit0 = sh; break }
+                            }
+                            if (hit0 != null) {
+                                hit0.hp -= bRate(K.B_TRAP, b.lvl)
+                                s.emit("hit", hit0.x, hit0.y)
+                                b.cd = 3f
+                                if (hit0.hp <= 0f) s.shadows.remove(hit0)
+                            }
+                        }
+                    }
+                    K.B_ALCHEMY -> {
+                        if (dist(b.x, b.y, s.player.x, s.player.y) < 110f)
+                            s.player.hp = minOf(100f, s.player.hp + bRate(K.B_ALCHEMY, b.lvl))
+                        craftTick(b)
+                    }
+                    K.B_SMITH, K.B_WORKSHOP -> craftTick(b)
+                    K.B_LUMBER -> {
+                        b.cd += 1f
+                        if (b.cd >= 10f) {
+                            b.cd = 0f
+                            s.addInv(s.player.inv, "wood", bRate(K.B_LUMBER, b.lvl).toInt())
+                        }
+                    }
+                    K.B_WIZARD -> {
+                        b.cd += 1f
+                        if (b.cd >= 4f) {                            // alan büyüsü
+                            b.cd = 0f
+                            val rr = 140f + 20f * b.lvl
+                            var iw = 0
+                            while (iw < s.shadows.size) {
+                                val shw = s.shadows[iw]
+                                if (shw.alive && dist(shw.x, shw.y, b.x, b.y) < rr) {
+                                    s.emit("hit", shw.x, shw.y)
+                                    damageShadow(shw, bRate(K.B_WIZARD, b.lvl))
+                                }
+                                iw++
+                            }
+                        }
+                    }
+                    K.B_HEAL -> for (mh in s.minions)
+                        if (dist(mh.x, mh.y, b.x, b.y) < 130f)
+                            mh.hp = minOf(60f, mh.hp + bRate(K.B_HEAL, b.lvl))
+                    K.B_BARRACKS -> {
+                        val hk = key(b.tx, b.ty)
+                        val have = s.minions.count { it.home == hk }
+                        if (have < b.lvl && s.minions.size < 12) {
+                            b.cd += 1f
+                            if (b.cd >= 6f) {
+                                b.cd = 0f
+                                s.minions.add(Minion(b.x + 20f, b.y + 14f,
+                                    30f + 10f * b.lvl, b.lvl, hk))
+                            }
+                        }
+                    }
+                }
+            }
+            s.player.inv["gold"] = gold
+        }
+        run {                                            // ── MİNYON YZ ──
+            var smithB = 0f
+            for (b in s.builds.values)
+                if (b.t == K.B_SMITH && bRate(K.B_SMITH, b.lvl) > smithB)
+                    smithB = bRate(K.B_SMITH, b.lvl)
+            var mi = 0
+            while (mi < s.minions.size) {
+                val m = s.minions[mi]
+                if (m.hp <= 0f) { s.minions.removeAt(mi); continue }
+                var tg: Shadow? = null; var bd = 280f
+                for (sh in s.shadows) {
+                    val d2 = dist(sh.x, sh.y, m.x, m.y)
+                    if (d2 < bd) { bd = d2; tg = sh }
+                }
+                if (tg != null) {
+                    val dx = tg.x - m.x; val dy = tg.y - m.y
+                    val dn = maxOf(1f, dist(0f, 0f, dx, dy))
+                    if (bd > 24f) { m.x += dx / dn * 55f * dt; m.y += dy / dn * 55f * dt }
+                    m.ac -= dt
+                    if (bd <= 26f && m.ac <= 0f) {
+                        m.ac = 0.8f
+                        tg.hp -= 5f + 2f * m.lvl + smithB
+                        s.emit("hit", tg.x, tg.y)
+                        if (tg.hp <= 0f) s.shadows.remove(tg)
+                    }
+                } else {
+                    val hb = s.builds[m.home]
+                    if (hb != null) {
+                        val dx = hb.x - m.x; val dy = hb.y - m.y
+                        val dn = dist(0f, 0f, dx, dy)
+                        if (dn > 40f) { m.x += dx / dn * 40f * dt; m.y += dy / dn * 40f * dt }
+                    }
+                }
+                mi++
+            }
+        }
         val p0 = s.phase()
         s.t += dt
         val p1 = s.phase()
@@ -111,8 +280,8 @@ class Game(val s: GameState) {
         s.emit(if (r.kind == K.R_ROCK) "mine" else if (r.kind == K.R_TREE) "chop" else "rustle",
             tx * K.TS, ty * K.TS)
         when (r.kind) {                                  // vuruş başına ödül (KO birebir)
-            K.R_TREE -> s.addInv(inv, "wood", 1)
-            K.R_ROCK -> s.addInv(inv, "stone", 1)
+            K.R_TREE -> s.addInv(inv, "wood", if ((s.player.inv["axe"] ?: 0) > 0) 2 else 1)
+            K.R_ROCK -> s.addInv(inv, "stone", if ((s.player.inv["pick"] ?: 0) > 0) 2 else 1)
             else -> s.addInv(inv, "berry", 2)
         }
         if (left <= 0) { s.hitsLeft.remove(k); s.harvested[k] = s.t + K.R_RESPAWN.getValue(r.kind) }
@@ -182,7 +351,7 @@ class Game(val s: GameState) {
         if (p.en < 8f) return
         p.en -= 8f; p.attackT = 0.18f; s.emit("swing", p.x, p.y)
         // Yay isabeti: gölgeler > fauna > Ayla (dost ateşi mümkün — sorumluluk oyuncuda)
-        val dmg = if ((p.inv["club"] ?: 0) > 0) 32f else 20f         // SOPA: +%60 vuruş
+        val dmg = 20f + bestAtk(p)                          // silah: en iyisi otomatik
         for (sh in s.shadows) if (sh.alive && hitArc(sh.x, sh.y)) { damageShadow(sh, dmg); return }
         for (c in s.critters) if (c.alive && hitArc(c.x, c.y)) { damageCritter(c, dmg); return }
         val v = s.villager
@@ -199,6 +368,17 @@ class Game(val s: GameState) {
     private fun doInteract() {
         val p = s.player
         if (p.buildMode) {
+            val ur = upgradeBuild()
+            if (ur == 1) { s.emit("craft", p.x, p.y); return }
+            if (ur == 2 || ur == 3) {                    // söküm kazara olmasın: çift-E
+                val fkD = key(frontTX(), frontTY())
+                if (!(demK == fkD && demT > 0f)) {
+                    demK = fkD; demT = 2.5f
+                    s.toast(if (ur == 3) "Maks seviye \u2014 tekrar E: S\u00d6K" else "Tekrar E: S\u00d6K", 0)
+                    return
+                }
+                demK = 0L
+            }
             val ftx0 = frontTX(); val fty0 = frontTY(); val fk0 = key(ftx0, fty0)
             val own = s.builds[fk0]
             if (own != null) {                           // SÖKÜM: %50 malzeme iadesi
@@ -232,8 +412,8 @@ class Game(val s: GameState) {
                 s.emit("craft", b.x, b.y); return
             }
             val mat = K.B_REPAIR[b.t]
-            if (mat != null && b.hp < K.B_HP.getValue(b.t) && s.takeInv(p.inv, mat, 1)) {
-                b.hp = minOf(K.B_HP.getValue(b.t), b.hp + K.B_HP.getValue(b.t) * 0.3f)
+            if (mat != null && b.hp < bHp(b.t, b.lvl) && s.takeInv(p.inv, mat, 1)) {
+                b.hp = minOf(bHp(b.t, b.lvl), b.hp + bHp(b.t, b.lvl) * 0.3f)
                 s.emit("craft", b.x, b.y); return
             }
         }
@@ -312,6 +492,38 @@ class Game(val s: GameState) {
         s.shadows.add(sh)
     }
 
+    fun bestAtk(p: Player): Float {
+        var a = 0f
+        for (e in K.IT_ATK) if ((p.inv[e.key] ?: 0) > 0 && e.value > a) a = e.value
+        return a
+    }
+    fun bestDef(p: Player): Float {
+        var d = 0f
+        for (e in K.IT_DEF) if ((p.inv[e.key] ?: 0) > 0 && e.value > d) d = e.value
+        return d
+    }
+    private fun craftTick(b: Build) {                    // oyuncu yakınken sıradakini üret
+        if (dist(b.x, b.y, s.player.x, s.player.y) > 96f) { b.cd = 0f; return }
+        b.cd += 1f
+        if (b.cd < 6f) return
+        b.cd = 0f
+        val p = s.player
+        for (id in K.IT_ORDER) {
+            if (K.IT_BLD[id] != b.t) continue
+            val have = p.inv[id] ?: 0
+            if (id == "potion") { if (have >= 3) continue } else if (have > 0) continue
+            var ok = true
+            for (c in K.IT_COST.getValue(id))
+                if ((p.inv[c.first] ?: 0) < c.second) ok = false
+            if (!ok) continue
+            for (c in K.IT_COST.getValue(id)) s.takeInv(p.inv, c.first, c.second)
+            s.addInv(p.inv, id, 1)
+            s.toast("⚒ " + (K.IT_NAME[id] ?: id) + " üretildi!", 0)
+            s.emit("craft", b.x, b.y)
+            return
+        }
+    }
+
     fun damageShadow(sh: Shadow, amt: Float) {
         if (!sh.alive) return
         sh.hp -= amt; s.emit("hitE", sh.x, sh.y)
@@ -355,7 +567,7 @@ class Game(val s: GameState) {
             if (l < 22f) {
                 if (sh.atkCd <= 0f) {
                     sh.atkCd = 0.8f
-                    if (isHeart) damageHeart(10f) else if (p.alive) damagePlayer(10f, sh)
+                    if (isHeart) damageHeart(10f) else if (p.alive) damagePlayer(10f * (1f - bestDef(p)), sh)
                 }
                 i++; continue
             }
@@ -640,5 +852,25 @@ class Game(val s: GameState) {
                 }
             }
         }
+    }
+
+    /* BİNA YÜKSELTME: palisat → taş duvar → kale taşı. Hedef katmanın TAM
+       maliyeti ödenir; can yeni tavana yenilenir (yatırımın ödülü). */
+    fun upgradeBuild(): Int {                       // 0 hedef yok · 1 oldu · 2 altın yetmez · 3 maks
+        val p = s.player
+        var b = s.builds[key(s.wtX(p.x + p.fx * 42f), s.wtY(p.y + p.fy * 42f))]
+        if (b == null) b = s.builds[key(s.wtX(p.x), s.wtY(p.y))]
+        if (b == null) return 0
+        if (SPEC[b.t] == null) return 0
+        if (b.lvl >= 5) return 3
+        var c = upCost(b.t, b.lvl + 1)
+        c -= c * wDisc / 100                             // atölye indirimi
+        val gold = p.inv["gold"] ?: 0
+        if (gold < c) { s.toast("Yükseltme: " + c + " altın gerek", 0); return 2 }
+        p.inv["gold"] = gold - c
+        b.lvl += 1
+        b.hp = bHp(b.t, b.lvl)
+        s.toast(K.B_NAME.getValue(b.t) + " \u2192 Seviye " + b.lvl, 0)
+        return 1
     }
 }

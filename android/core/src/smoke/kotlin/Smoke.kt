@@ -286,10 +286,11 @@ fun main() {
     p6.fx = 1f; p6.fy = 0f
     p6.inv["wood"] = 5; p6.buildMode = true; p6.buildSel = K.WALL
     g6.tapAttack(); g6.update(0.016f)
-    A(s6.builds.size == 1, "v2: duvar kondu (söküm hazırlığı)")
+    A(s6.builds.values.count { it.t == K.WALL } == 1, "v2: duvar kondu (söküm hazırlığı)")
     val wAfter = p6.inv["wood"] ?: 0
-    g6.tapInteract(); g6.update(0.016f)
-    A(s6.builds.isEmpty(), "v2: SÖKÜM — yapı kalktı")
+    g6.tapInteract(); g6.update(0.016f)              // 1. E: koruma uyarısı
+    g6.tapInteract(); g6.update(0.016f)              // 2. E: söküm
+    A(s6.builds.values.none { it.t == K.WALL }, "v2: SÖKÜM — yapı kalktı")
     A((p6.inv["wood"] ?: 0) > wAfter, "v2: söküm iadesi geldi (+%50)")
 
     // — SOHBET —
@@ -308,5 +309,154 @@ fun main() {
     i = 0; while (i < 60) { g8.update(0.05f); i++ }
     A(s8.day == 2 && s8.toasts.any { it.text.contains("4 gölge") }, "v2: ŞAFAK KARNESİ — gece özeti tostu")
 
-    println("\n\u2605 DUMAN TEST\u0130: $pass/$pass GE\u00c7T\u0130 \u2014 \u00e7ekirdek Kotlin'de F\u0130\u0130LEN \u00c7ALI\u015eTI.")
+    
+run {   // 60: BİNA YÜKSELTME — açık çimene ışınlan, yerleştir, yükselt
+    val s60 = GameState(73)
+    val g2 = Game(s60)
+    val p = s60.player
+    var fx60 = p.x; var fy60 = p.y
+    loopP@ for (ty in 40 until 120) {
+        for (tx in 40 until 120) {
+            val tt = s60.gen.tileAt(tx, ty); val tn = s60.gen.tileAt(tx + 1, ty)
+            if ((tt == K.T_GRASS) && (tn == K.T_GRASS) &&
+                s60.gen.resourceAt(tx, ty) == null && s60.gen.resourceAt(tx + 1, ty) == null) {
+                fx60 = tx * K.TS + 16f; fy60 = ty * K.TS + 16f; break@loopP
+            }
+        }
+    }
+    p.x = fx60; p.y = fy60
+    p.inv["wood"] = 10; p.inv["stone"] = 0
+    p.buildMode = true; p.fx = 1f; p.fy = 0f; p.buildSel = K.WALL
+    g2.tapAttack(); g2.update(0.016f)
+    val k60 = key(s60.wtX(p.x + 42f), s60.wtY(p.y))
+    A(s60.builds[k60] != null, "60a yerleşti")
+    p.inv["gold"] = 0
+    A(g2.upgradeBuild() == 2, "60b altınsız reddetti")
+    p.inv["gold"] = 999
+    A(g2.upgradeBuild() == 1, "60c L2 oldu")
+    val b60 = s60.builds[k60]
+    A(b60 != null && b60.lvl == 2, "60d seviye 2")
+    A(b60 != null && b60.hp == bHp(K.WALL, 2), "60e can L2 tavanı")
+    g2.upgradeBuild(); g2.upgradeBuild(); g2.upgradeBuild()
+    A(b60 != null && b60.lvl == 5 && g2.upgradeBuild() == 3, "60f maks seviye 5")
+}
+
+
+run {   // 63: OK KULESI — menzildeki golgeye otomatik hasar
+    val s63 = GameState(73)
+    val g63 = Game(s63)
+    val bx3 = s63.wtX(s63.player.x) + 3; val by3 = s63.wtY(s63.player.y)
+    val tw = Build(K.B_TOWER, bx3, by3); tw.lvl = 2
+    s63.builds[key(bx3, by3)] = tw
+    val sh63 = Shadow(tw.x + 40f, tw.y); sh63.hp = 60f
+    s63.shadows.add(sh63)
+    var i63 = 0
+    while (i63 < 90 && sh63.hp >= 60f) { g63.update(0.05f); i63++ }
+    A(sh63.hp < 60f, "63a kule vurdu: " + sh63.hp)
+}
+
+run {   // 64: DIKEN TUZAGI — ustune basan golge hasar alir, bekleme dolar
+    val s64 = GameState(73)
+    val g64 = Game(s64)
+    val bx4 = s64.wtX(s64.player.x) + 3; val by4 = s64.wtY(s64.player.y)
+    val tp = Build(K.B_TRAP, bx4, by4); tp.lvl = 3
+    s64.builds[key(bx4, by4)] = tp
+    val sh64 = Shadow(tp.x + 4f, tp.y); sh64.hp = 100f
+    s64.shadows.add(sh64)
+    var i64 = 0
+    while (i64 < 90 && sh64.hp >= 100f) { g64.update(0.05f); i64++ }
+    A(sh64.hp < 100f, "64a tuzak yakti: " + sh64.hp)
+    A(tp.cd > 0f, "64b bekleme doldu")
+}
+
+run {   // 65: DUNYA SINIRI — slither tarzi dairesel ceper
+    val s65 = GameState(73)
+    A(s65.gen.tileAt(K.WORLD_R + 5, 0) == K.T_DEEP, "65a sinir otesi okyanus")
+    A(s65.gen.tileAt(0, K.WORLD_R - 2) <= K.T_WATER, "65b ceperde kara yok")
+    A(s65.gen.tileAt(40, 60) >= K.T_SAND || s65.gen.tileAt(40, 60) <= K.T_WATER, "65c ic bolge dokunulmadi")
+    val c65 = s65.gen.campTile()
+    val d65 = dist(0f, 0f, c65.first.toFloat(), c65.second.toFloat())
+    A(d65 < K.WORLD_R - 60f, "65d kamp sinirin icinde: " + d65)
+}
+
+run {   // 66: DEMIRCI URETIMI — kaynak varsa siradakini uretir, en iyi silah otomatik
+    val s66 = GameState(73)
+    val g66 = Game(s66)
+    g66.update(0.05f)
+    val p66 = s66.player
+    s66.addInv(p66.inv, "wood", 20); s66.addInv(p66.inv, "stone", 20)
+    val bx6 = s66.wtX(p66.x) + 2; val by6 = s66.wtY(p66.y)
+    s66.builds[key(bx6, by6)] = Build(K.B_SMITH, bx6, by6)
+    var i66 = 0
+    while (i66 < 160 && (p66.inv["club"] ?: 0) == 0) { g66.update(0.05f); i66++ }
+    A((p66.inv["club"] ?: 0) == 1, "66a sopa uretildi")
+    A(g66.bestAtk(p66) == 12f, "66b silah kusanildi: " + g66.bestAtk(p66))
+    i66 = 0
+    while (i66 < 160 && (p66.inv["ssword"] ?: 0) == 0) { g66.update(0.05f); i66++ }
+    A(g66.bestAtk(p66) == 22f, "66c tas kilic terfisi")
+}
+
+run {   // 67: HEYKEL CARPANI + AMBAR — uretim hizlanir
+    val s67 = GameState(73)
+    val g67 = Game(s67)
+    g67.update(0.05f)
+    val hx7 = s67.wtX(s67.player.x) + 3; val hy7 = s67.wtY(s67.player.y)
+    val st7 = Build(K.B_STATUE, hx7, hy7); st7.lvl = 5
+    s67.builds[key(hx7, hy7)] = st7
+    val dp7 = Build(K.B_STORE, hx7 + 1, hy7); dp7.lvl = 3        // depo: altın tavanı aç
+    s67.builds[key(hx7 + 1, hy7)] = dp7
+    val g0 = s67.player.inv["gold"] ?: 0
+    var i67 = 0
+    while (i67 < 600) { g67.update(0.05f); i67++ }      // 30 sn: 0.5/sn taban × 1.2 heykel = 18
+    val kazanc = (s67.player.inv["gold"] ?: 0) - g0
+    A(kazanc >= 17, "67a heykelli kazanc 30sn: " + kazanc + " (statusuz 15 olurdu)")
+}
+
+run {   // 68: BUYUCU KULESI — alan hasari
+    val s68 = GameState(73)
+    val g68 = Game(s68)
+    val bx8 = s68.wtX(s68.player.x) + 3; val by8 = s68.wtY(s68.player.y)
+    val wz = Build(K.B_WIZARD, bx8, by8); wz.lvl = 2
+    s68.builds[key(bx8, by8)] = wz
+    val sh8 = Shadow(wz.x + 80f, wz.y); sh8.hp = 50f
+    s68.shadows.add(sh8)
+    var i68 = 0
+    while (i68 < 140 && sh8.hp >= 50f && sh8.alive) { g68.update(0.05f); i68++ }
+    A(sh8.hp < 50f || !sh8.alive, "68a buyu carpti: " + sh8.hp)
+}
+
+run {   // 69: AKILLI IKSIR — can dusunce otomatik icilir
+    val s69 = GameState(73)
+    val g69 = Game(s69)
+    s69.addInv(s69.player.inv, "potion", 1)
+    s69.player.hp = 20f
+    var i69 = 0
+    while (i69 < 40 && s69.player.hp < 50f) { g69.update(0.05f); i69++ }
+    A(s69.player.hp >= 55f, "69a iksir icildi: " + s69.player.hp)
+    A((s69.player.inv["potion"] ?: 0) == 0, "69b iksir tukendi")
+}
+
+run {   // 61: JENERATÖR — otomatik yerleşir, altın üretir
+    val s61 = GameState(73)
+    val g61 = Game(s61)
+    var i61 = 0
+    while (i61 < 80) { g61.update(0.05f); i61++ }
+    A(s61.builds.values.count { it.t == K.B_GEN } == 1, "61a tek jeneratör")
+    A((s61.player.inv["gold"] ?: 0) >= 26, "61b altın aktı: " + (s61.player.inv["gold"] ?: 0))
+}
+
+run {   // 62: KIŞLA — minyon doğar, seviye tavanına uyar
+    val s62 = GameState(73)
+    val g62 = Game(s62)
+    val bx = s62.wtX(s62.player.x) + 3
+    val by = s62.wtY(s62.player.y) + 3
+    val kb = Build(K.B_BARRACKS, bx, by)
+    kb.lvl = 2; kb.hp = bHp(K.B_BARRACKS, 2)
+    s62.builds[key(bx, by)] = kb
+    var i62 = 0
+    while (i62 < 400) { g62.update(0.05f); i62++ }
+    A(s62.minions.size in 1..2, "62a minyon doğdu/tavanlı: " + s62.minions.size)
+}
+
+println("\n\u2605 DUMAN TEST\u0130: $pass/$pass GE\u00c7T\u0130 \u2014 \u00e7ekirdek Kotlin'de F\u0130\u0130LEN \u00c7ALI\u015eTI.")
 }

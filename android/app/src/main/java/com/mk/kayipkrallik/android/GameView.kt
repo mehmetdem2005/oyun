@@ -43,7 +43,7 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     private val appCtx: Context = ctx
 
     /* ── kipler ── */
-    private val M_MENU = 0; private val M_PLAY = 1; private val M_PAUSE = 2
+    private val M_MENU = 0; private val M_PLAY = 1; private val M_PAUSE = 2; private val M_SET = 7; private val M_MAP = 8
     private var mode = M_MENU
     private var game: Game? = null
 
@@ -78,6 +78,8 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     private var joyVx = 0f; private var joyVy = 0f
     private var atkId = -1; private var atkHeld = false
     private val btnRects = ArrayList<Pair<RectF, Int>>()   // menü/duraklatma vuruş alanları
+    private var mapCols: IntArray? = null                   // harita karo önbelleği (128×128)
+    private var mapTx0 = 0; private var mapTy0 = 0          // pencere sol-üst karosu
 
     /* ── HUD olay yerelleri ── */
     private class Tst(val text: String, val color: Int) { var t = 2.7f }
@@ -118,6 +120,8 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     fun onBack(): Boolean {                             // geri tuşu: oyun→duraklat→menü
         if (mode == M_PLAY) { mode = M_PAUSE; return true }
         if (mode == M_PAUSE) { mode = M_PLAY; return true }
+        if (mode == M_SET) { mode = M_PAUSE; return true }
+        if (mode == M_MAP) { mode = M_PLAY; return true }
         return false
     }
 
@@ -168,6 +172,9 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     private val buildRects = ArrayList<Pair<RectF, Int>>()
     private var wt = 0f                                  // yürüyüş fazı (yalnız çizim)
     private var sprInit = false
+    private var joySz = 1; private var flipUI = false   // kontrol ayarları
+    private fun jr() = floatArrayOf(50f, 66f, 84f)[joySz]
+    private fun axx(x: Float) = if (flipUI) uw - x else x
     private var us = 2.4f; private var uw = 1f; private var uh = 1f   // UI ölçeği + sanal tuval
     private var zoomMode = 1                             // 0 yakın · 1 orta · 2 uzak (ayarlardan)
     private val spp = Paint()                            // sprite boyası
@@ -207,10 +214,15 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             sprInit = true
             Sprites.load(appCtx)
             zoomMode = appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE).getInt("zoom", 1)
+            val sp0 = appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE)
+            joySz = sp0.getInt("joy", 1)
+            flipUI = sp0.getInt("flip", 0) == 1
+            snd.muted = sp0.getInt("mute", 0) == 1
+            Net.init(appCtx)
             applyZoom()
         }
         if (g.chatPort == null)                          // yerel sohbet adaptörü (port bağlama)
-            g.chatPort = object : ChatPort { override fun send(text: String, who: Int) { } }
+            g.chatPort = object : ChatPort { override fun send(text: String, who: Int) { Net.sendChat(text);  } }
         if (atkHeld) g.tapAttack()                      // basılı tut = seri vuruş (çekirdek cd'li)
         g.setDir(joyVx, joyVy)
         if (Math.abs(joyVx) + Math.abs(joyVy) > 0.05f) wt += dt * 11f
@@ -239,6 +251,9 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         s.dirtyChunks.clear()                           // zemin değişmez; kaynak canlı çizilir
         mmT -= dt
         if (mmT <= 0f) { mmT = 0.6f; updateMinimap(s) }
+        Net.pos(s.player.x, s.player.y)
+        var nm = Net.chatIn.poll()                       // ağdan gelen sohbet
+        while (nm != null) { s.pushChat(nm, 0); nm = Net.chatIn.poll() }
         if (g.autoSaveRequested) { g.autoSaveRequested = false; saveNow() }
         decayHud(dt)
         // kamera: oyuncuyu merkezde tutan yumuşak takip
@@ -289,6 +304,8 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         c.restore()
         drawHud(c, s)
         if (mode == M_PAUSE) drawPause(c)
+        if (mode == M_SET) drawSettings(c)
+        if (mode == M_MAP) drawMap(c)
     }
 
     /* ── dünya: zemin chunk'ları + y-sıralı varlıklar ── */
@@ -344,6 +361,19 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         val v = s.villager
         if (v != null && v.hp > 0f)
             list.add(Dr(v.y) { cv -> drawVillager(cv, s) })
+        run {                                            // çevrim içi hayalet oyuncular
+            val ghn = Net.ghosts
+            var gi = 0
+            while (gi < ghn.size) {
+                val g2 = ghn[gi]
+                list.add(Dr(g2.y) { cv ->
+                    drawHumanRect(cv, s, g2.x, g2.y, 0f, 1f, false,
+                        rgb(118, 138, 170), rgb(56, 62, 80), true, 150)
+                    drawTag(cv, g2.x, g2.y - 34f, g2.name)
+                })
+                gi++
+            }
+        }
         for (cr in s.critters) if (cr.alive)
             list.add(Dr(cr.y) { cv -> drawCritter(cv, s, cr) })
         for (sh in s.shadows)
@@ -528,11 +558,19 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             else if (b.t == K.WALL_STONE) "build_stonewall"
             else if (b.t == K.WALL_KEEP) "build_keep"
             else if (b.t == K.DOOR) (if (b.open) "build_gate_open" else "build_gate")
-            else "build_ballista"
+            else if (b.t == K.BALLISTA) "build_ballista"
+            else if (b.t == K.B_GEN) "heart"
+            else ""
         val sprB = spr(c, arrayOf(bk), s.t, 4f, x, y + 2f,
             if (b.t == K.WALL_KEEP || b.t == K.BALLISTA) 42f else 36f, false, 255)
         if (!sprB) {
-        if (b.t == K.WALL) {
+        if (b.t >= K.B_GEN) {                            // ekonomi yapıları: tip-renkli kutu
+            val mc = K.B_MAPCOL[b.t] ?: 0x888888
+            p.setColor(rgb((mc shr 16) and 255, (mc shr 8) and 255, mc and 255))
+            c.drawRect(x - 14f, y - 24f, x + 14f, y + 2f, p)
+            p.setColor(rgb(((mc shr 16) and 255) * 2 / 3, ((mc shr 8) and 255) * 2 / 3, (mc and 255) * 2 / 3))
+            c.drawRect(x - 14f, y - 24f, x + 14f, y - 18f, p)
+        } else if (b.t == K.WALL) {
             var i = 0
             while (i < 4) {                              // sivri kütükler (iki ton)
                 val px = x - 14f + i * 8f
@@ -1266,16 +1304,17 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
     private fun drawTouchButtons(c: Canvas, s: GameState) {
         // duraklat (sağ-üst)
         circleBtn(c, uw - 44f, 44f, 28f, argb(170, 12, 18, 28), "II", 13f)
+        circleBtn(c, uw - 112f, 44f, 28f, argb(170, 12, 18, 28), "M", 13f)
         // VUR (büyük), E, B
-        circleBtn(c, uw - 88f, uh - 124f, 58f, argb(205, 201, 47, 63), "SALDIR", 16f)
-        circleBtn(c, uw - 206f, uh - 98f, 44f, argb(205, 44, 111, 196), "KULLAN", 12f)
-        circleBtn(c, uw - 188f, uh - 212f, 40f,
+        circleBtn(c, axx(uw - 88f), uh - 124f, 58f, argb(205, 201, 47, 63), "SALDIR", 16f)
+        circleBtn(c, axx(uw - 206f), uh - 98f, 44f, argb(205, 44, 111, 196), "KULLAN", 12f)
+        circleBtn(c, axx(uw - 188f), uh - 212f, 40f,
             if (s.player.buildMode) argb(235, 232, 183, 61) else argb(205, 90, 107, 128), "İNŞA", 13f)
         // joystick
         if (joyId != -1) {
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3f)
             p.setColor(argb(90, 255, 255, 255))
-            c.drawCircle(joyOx, joyOy, 66f, p)
+            c.drawCircle(joyOx, joyOy, jr(), p)
             p.setStyle(Paint.Style.FILL)
             p.setColor(argb(110, 255, 255, 255))
             c.drawCircle(joyOx + joyVx * 48f, joyOy + joyVy * 48f, 24f, p)
@@ -1302,6 +1341,26 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(17f); tp.setColor(Color.WHITE)
         c.drawText(label, cx, y + 35f, tp)
         btnRects.add(Pair(r, id))
+    }
+    private fun drawSettings(c: Canvas) { c.save(); c.scale(us, us); drawSettingsI(c); c.restore() }
+    private fun drawSettingsI(c: Canvas) {               // AYARLAR PANELİ
+        p.setColor(argb(210, 8, 10, 16)); c.drawRect(0f, 0f, uw, uh, p)
+        tp.setColor(rgb(255, 215, 106)); tp.setTextSize(26f)
+        c.drawText("AYARLAR", uw / 2f, uh * 0.15f, tp)
+        
+        val cy0 = uh * 0.26f
+        panelBtn(c, uw / 2f, cy0, 320f,
+            "Yakınlık: " + arrayOf("Yakın", "Orta", "Uzak")[zoomMode], 20, false)
+        panelBtn(c, uw / 2f, cy0 + 62f, 320f,
+            "Ses: " + (if (snd.muted) "Kapalı" else "Açık"), 21, false)
+        panelBtn(c, uw / 2f, cy0 + 124f, 320f,
+            "Joystick: " + arrayOf("Küçük", "Orta", "Büyük")[joySz], 22, false)
+        panelBtn(c, uw / 2f, cy0 + 186f, 320f,
+            "Butonlar: " + (if (flipUI) "Solda" else "Sağda"), 23, false)
+        tp.setColor(rgb(150, 158, 176)); tp.setTextSize(13f)
+        c.drawText(if (Net.on) "Çevrim içi: BAĞLI · " + Net.ghosts.size + " oyuncu görünür"
+            else "Çevrim içi: kapalı — assets/net.txt ekleyip derle", uw / 2f, cy0 + 240f, tp)
+        panelBtn(c, uw / 2f, cy0 + 292f, 320f, "Geri", 25, true)
     }
     private fun drawMenu(c: Canvas) { c.save(); c.scale(us, us); drawMenuI(c); c.restore() }
     private fun drawMenuI(c: Canvas) {
@@ -1338,6 +1397,382 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         tp.setTextSize(11f); tp.setColor(argb(140, 255, 255, 255))
         c.drawText("Tek dosya çekirdek · SurfaceView · motorsuz saf Kotlin", uw / 2f, uh - 28f, tp)
     }
+    /* ════ TAM HARİTA — iki kademe: Bölge (256 m gerçek ölçek) · Dünya (5,6 km) ════ */
+    private val MAP_N = 64
+    private val MAPW_N = 280                            // dünya örnekleme ızgarası (adım 5 karo)
+    private var mapZoom = 0                              // 0 bölge · 1 dünya
+    private var mapRes: ByteArray? = null
+    private var mapColsW: IntArray? = null
+    private var mapCx = 0; private var mapCy = 0         // bölge önbellek merkezi
+    private var mtgL = 0f; private var mtgT = 0f; private var mtgR = 0f; private var mtgB = 0f
+
+    private fun mfloor(v: Float): Int = if (v >= 0f) v.toInt() else v.toInt() - 1
+    private fun mh(x: Int, y: Int): Float {
+        var h = x * 374761393 + y * 668265263
+        h = (h xor (h ushr 13)) * 1274126177
+        return ((h xor (h ushr 16)) and 0x7fffffff).toFloat() / 2147483647f
+    }
+    private fun vnoise(px0: Float, py0: Float): Float {
+        val xi = mfloor(px0); val yi = mfloor(py0)
+        val fx = px0 - xi; val fy = py0 - yi
+        val va = mh(xi, yi); val vb = mh(xi + 1, yi)
+        val vc = mh(xi, yi + 1); val vd = mh(xi + 1, yi + 1)
+        val ux = fx * fx * (3f - 2f * fx); val uy = fy * fy * (3f - 2f * fy)
+        return va + (vb - va) * ux + (vc - va) * uy + (va - vb - vc + vd) * ux * uy
+    }
+    private fun lerpC(c1: Int, c2: Int, t: Float): Int {
+        val r = (((c1 shr 16) and 255) + (((c2 shr 16) and 255) - ((c1 shr 16) and 255)) * t).toInt()
+        val g0 = (((c1 shr 8) and 255) + (((c2 shr 8) and 255) - ((c1 shr 8) and 255)) * t).toInt()
+        val b0 = ((c1 and 255) + ((c2 and 255) - (c1 and 255)) * t).toInt()
+        return (r shl 16) or (g0 shl 8) or b0
+    }
+    private fun shadeC(c0: Int, f: Float): Int {
+        val r = minOf(255, (((c0 shr 16) and 255) * f).toInt())
+        val g0 = minOf(255, (((c0 shr 8) and 255) * f).toInt())
+        val b0 = minOf(255, ((c0 and 255) * f).toInt())
+        return (r shl 16) or (g0 shl 8) or b0
+    }
+    private fun tClass(t: Int): Int =
+        if (t == K.T_DEEP) 0 else if (t == K.T_WATER) 1 else if (t == K.T_SAND) 2 else 3
+    private fun mcol(v: Int) = rgb((v shr 16) and 255, (v shr 8) and 255, v and 255)
+
+    private fun waterBand(d: Int): Int =
+        if (d <= 1) 0x4e80a8 else if (d == 2) 0x3a6a94
+        else if (d == 3) 0x2e5a84 else if (d <= 5) 0x254e76 else 0x1b3c5e
+
+    private fun buildMapCache(s: GameState) {           // BÖLGE: oyuncu merkezli, gerçek ölçek
+        val n = MAP_N; val pad = 6; val np = n + 2 * pad
+        mapCx = s.wtX(s.player.x); mapCy = s.wtY(s.player.y)
+        mapTx0 = mapCx - n / 2; mapTy0 = mapCy - n / 2
+        val tt = IntArray(np * np)
+        var j = 0
+        while (j < np) {
+            var i = 0
+            while (i < np) { tt[j * np + i] = s.gen.tileAt(mapTx0 - pad + i, mapTy0 - pad + j); i++ }
+            j++
+        }
+        val dst = IntArray(np * np)
+        var k = 0
+        while (k < np * np) { dst[k] = if (tt[k] >= K.T_SAND) 0 else 999; k++ }
+        j = 0
+        while (j < np) {
+            var i = 0
+            while (i < np) {
+                val idx = j * np + i
+                if (i > 0 && dst[idx - 1] + 1 < dst[idx]) dst[idx] = dst[idx - 1] + 1
+                if (j > 0 && dst[idx - np] + 1 < dst[idx]) dst[idx] = dst[idx - np] + 1
+                i++
+            }
+            j++
+        }
+        j = np - 1
+        while (j >= 0) {
+            var i = np - 1
+            while (i >= 0) {
+                val idx = j * np + i
+                if (i < np - 1 && dst[idx + 1] + 1 < dst[idx]) dst[idx] = dst[idx + 1] + 1
+                if (j < np - 1 && dst[idx + np] + 1 < dst[idx]) dst[idx] = dst[idx + np] + 1
+                i--
+            }
+            j--
+        }
+        val cols = IntArray(n * n); val res = ByteArray(n * n)
+        var ty = 0
+        while (ty < n) {
+            var tx = 0
+            while (tx < n) {
+                val wx = mapTx0 + tx; val wy = mapTy0 + ty
+                val ip = (ty + pad) * np + (tx + pad)
+                val wt = tt[ip]
+                var col: Int
+                if (wt == K.T_DEEP || wt == K.T_WATER) {
+                    col = waterBand(dst[ip])
+                    if (wt == K.T_DEEP) col = shadeC(col, 0.82f)
+                    col = lerpC(col, 0x224a70, vnoise(wx * 0.3f, wy * 0.3f) * 0.25f)
+                } else if (wt == K.T_SAND) {
+                    col = lerpC(0xb99a58, 0xcbb06e, vnoise(wx * 0.35f + 31f, wy * 0.35f))
+                } else if (wt == K.T_CAMP) {
+                    col = lerpC(0x86a056, 0x93ab60, vnoise(wx * 0.3f, wy * 0.3f))
+                } else {
+                    col = lerpC(0x3a6634, 0x4a7a3e, vnoise(wx * 0.16f, wy * 0.16f))
+                    val r0 = s.gen.resourceAt(wx, wy)
+                    if (r0 != null) res[ty * n + tx] = r0.kind.toByte()
+                }
+                val cN = tClass(tt[ip - np]); val cC = tClass(wt)
+                if (cC > cN) col = shadeC(col, 1.14f) else if (cC < cN) col = shadeC(col, 0.86f)
+                cols[ty * n + tx] = col
+                tx++
+            }
+            ty++
+        }
+        mapCols = cols; mapRes = res
+    }
+
+    private fun buildMapCacheW(s: GameState) {          // DÜNYA: 1400 karo, 5 karo örnekleme
+        val n2 = MAPW_N; val step = (2 * K.WORLD_R) / n2
+        val tt = IntArray(n2 * n2)
+        var j = 0
+        while (j < n2) {
+            var i = 0
+            while (i < n2) {
+                val wx = -K.WORLD_R + i * step; val wy = -K.WORLD_R + j * step
+                tt[j * n2 + i] = s.gen.tileAt(wx, wy)
+                i++
+            }
+            j++
+        }
+        val dst = IntArray(n2 * n2)
+        var k = 0
+        while (k < n2 * n2) { dst[k] = if (tt[k] >= K.T_SAND) 0 else 999; k++ }
+        j = 0
+        while (j < n2) {
+            var i = 0
+            while (i < n2) {
+                val idx = j * n2 + i
+                if (i > 0 && dst[idx - 1] + 1 < dst[idx]) dst[idx] = dst[idx - 1] + 1
+                if (j > 0 && dst[idx - n2] + 1 < dst[idx]) dst[idx] = dst[idx - n2] + 1
+                i++
+            }
+            j++
+        }
+        j = n2 - 1
+        while (j >= 0) {
+            var i = n2 - 1
+            while (i >= 0) {
+                val idx = j * n2 + i
+                if (i < n2 - 1 && dst[idx + 1] + 1 < dst[idx]) dst[idx] = dst[idx + 1] + 1
+                if (j < n2 - 1 && dst[idx + n2] + 1 < dst[idx]) dst[idx] = dst[idx + n2] + 1
+                i--
+            }
+            j--
+        }
+        val cols = IntArray(n2 * n2)
+        j = 0
+        while (j < n2) {
+            var i = 0
+            while (i < n2) {
+                val wx = -K.WORLD_R + i * step; val wy = -K.WORLD_R + j * step
+                val idx = j * n2 + i
+                val ddx = wx.toFloat(); val ddy = wy.toFloat()
+                val rOut = (K.WORLD_R + step).toFloat()
+                if (ddx * ddx + ddy * ddy >= rOut * rOut) {
+                    cols[idx] = -1                       // dünya dışı
+                } else {
+                    val wt = tt[idx]
+                    var col: Int
+                    if (wt == K.T_DEEP || wt == K.T_WATER) {
+                        col = waterBand(dst[idx])
+                        if (wt == K.T_DEEP) col = shadeC(col, 0.82f)
+                    } else if (wt == K.T_SAND) {
+                        col = 0xbf9f5c
+                    } else if (wt == K.T_CAMP) {
+                        col = 0x8aa45a
+                    } else {
+                        col = lerpC(0x3a6634, 0x4a7a3e, vnoise(wx * 0.04f, wy * 0.04f))
+                        if (s.gen.resourceAt(wx, wy) != null) col = lerpC(col, 0x2c5226, 0.6f)
+                    }
+                    if (j > 0) {
+                        val cN = tClass(tt[idx - n2]); val cC = tClass(wt)
+                        if (cC > cN) col = shadeC(col, 1.12f) else if (cC < cN) col = shadeC(col, 0.88f)
+                    }
+                    cols[idx] = col
+                }
+                i++
+            }
+            j++
+        }
+        mapColsW = cols
+    }
+
+    private fun drawMapChrome(c: Canvas, ox: Float, oy: Float, side: Float, cap: String, tog: String) {
+        run {                                            // vinyet
+            val vt = side * 0.035f
+            p.setColor(argb(20, 0, 0, 0))
+            c.drawRect(ox, oy, ox + side, oy + vt, p)
+            c.drawRect(ox, oy + side - vt, ox + side, oy + side, p)
+            c.drawRect(ox, oy, ox + vt, oy + side, p)
+            c.drawRect(ox + side - vt, oy, ox + side, oy + side, p)
+        }
+        val o1 = 8f; val o2 = 14f                        // çift çerçeve + köşeler
+        p.setColor(rgb(210, 166, 78))
+        c.drawRect(ox - o2, oy - o2, ox + side + o2, oy - o2 + 2f, p)
+        c.drawRect(ox - o2, oy + side + o2 - 2f, ox + side + o2, oy + side + o2, p)
+        c.drawRect(ox - o2, oy - o2, ox - o2 + 2f, oy + side + o2, p)
+        c.drawRect(ox + side + o2 - 2f, oy - o2, ox + side + o2, oy + side + o2, p)
+        p.setColor(rgb(60, 52, 34))
+        c.drawRect(ox - o1, oy - o1, ox + side + o1, oy - o1 + 1.5f, p)
+        c.drawRect(ox - o1, oy + side + o1 - 1.5f, ox + side + o1, oy + side + o1, p)
+        c.drawRect(ox - o1, oy - o1, ox - o1 + 1.5f, oy + side + o1, p)
+        c.drawRect(ox + side + o1 - 1.5f, oy - o1, ox + side + o1, oy + side + o1, p)
+        p.setColor(rgb(210, 166, 78))
+        var ci = 0
+        while (ci < 4) {
+            val cxk = if (ci % 2 == 0) ox - o2 else ox + side + o2 - 6f
+            val cyk = if (ci < 2) oy - o2 else oy + side + o2 - 6f
+            c.drawRect(cxk, cyk, cxk + 6f, cyk + 6f, p)
+            ci++
+        }
+        tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(26f); tp.setColor(rgb(255, 215, 106))
+        c.drawText("HARİTA", uw / 2f, oy - 26f, tp)
+        tp.setTextSize(16f); c.drawText("K", ox + side - 12f, oy + 22f, tp)
+        tp.setTextSize(13f); tp.setColor(rgb(190, 198, 212))
+        c.drawText(cap, uw / 2f, oy + side + 24f, tp)
+        tp.setColor(rgb(150, 158, 172))
+        c.drawText("Dokun: kapat", uw / 2f, oy + side + 42f, tp)
+        mtgL = uw / 2f - 104f; mtgT = oy + side - 56f    // geçiş çipi
+        mtgR = uw / 2f + 104f; mtgB = mtgT + 42f
+        p.setColor(argb(215, 12, 16, 26)); c.drawRect(mtgL, mtgT, mtgR, mtgB, p)
+        p.setColor(rgb(210, 166, 78))
+        c.drawRect(mtgL, mtgT, mtgR, mtgT + 1.5f, p)
+        c.drawRect(mtgL, mtgB - 1.5f, mtgR, mtgB, p)
+        tp.setTextSize(16f); tp.setColor(rgb(255, 215, 106))
+        c.drawText(tog, uw / 2f, mtgT + 27f, tp)
+    }
+
+    private fun drawMap(c: Canvas) {
+        val g = game ?: return
+        val s = g.s
+        p.setColor(argb(242, 5, 8, 14)); c.drawRect(0f, 0f, uw, uh, p)
+        val side = minOf(uw, uh) - 84f
+        val ox = (uw - side) / 2f; val oy = (uh - side) / 2f
+        if (mapZoom == 1) { drawMapWorld(c, s, ox, oy, side); return }
+        val pcx = s.wtX(s.player.x); val pcy = s.wtY(s.player.y)
+        val dxC = pcx - mapCx; val dyC = pcy - mapCy
+        if (mapCols == null || dxC > 10 || dxC < -10 || dyC > 10 || dyC < -10) buildMapCache(s)
+        val cols = mapCols ?: return
+        val res = mapRes ?: return
+        val n = MAP_N
+        val px = side / n
+        var ty = 0
+        while (ty < n) {
+            val yy = oy + ty * px
+            var tx = 0
+            while (tx < n) {
+                val c0 = cols[ty * n + tx]
+                var tx2 = tx + 1
+                while (tx2 < n && cols[ty * n + tx2] == c0) tx2++
+                p.setColor(mcol(c0))
+                c.drawRect(ox + tx * px, yy, ox + tx2 * px, yy + px + 0.5f, p)
+                tx = tx2
+            }
+            ty++
+        }
+        ty = 0
+        while (ty < n) {
+            var tx = 0
+            while (tx < n) {
+                val r0 = res[ty * n + tx].toInt()
+                if (r0 != 0) {
+                    val cx0 = ox + (tx + 0.5f) * px; val cy0 = oy + (ty + 0.5f) * px
+                    if (r0 == 1) {
+                        p.setColor(mcol(0x274e22)); c.drawCircle(cx0 + 0.08f * px, cy0 + 0.10f * px, 0.55f * px, p)
+                        p.setColor(mcol(0x356b2c)); c.drawCircle(cx0, cy0, 0.46f * px, p)
+                        p.setColor(mcol(0x4c8a3a)); c.drawCircle(cx0 - 0.14f * px, cy0 - 0.14f * px, 0.26f * px, p)
+                    } else if (r0 == 2) {
+                        p.setColor(mcol(0x5e646e)); c.drawCircle(cx0 + 0.05f * px, cy0 + 0.07f * px, 0.30f * px, p)
+                        p.setColor(mcol(0x9298a2)); c.drawCircle(cx0 - 0.05f * px, cy0 - 0.05f * px, 0.22f * px, p)
+                    } else {
+                        p.setColor(mcol(0x2f5a2a)); c.drawCircle(cx0 + 0.04f * px, cy0 + 0.05f * px, 0.32f * px, p)
+                        p.setColor(mcol(0x4a8038)); c.drawCircle(cx0 - 0.06f * px, cy0 - 0.06f * px, 0.20f * px, p)
+                    }
+                }
+                tx++
+            }
+            ty++
+        }
+        for (b in s.builds.values) {
+            val bx = b.tx - mapTx0; val by = b.ty - mapTy0
+            if (bx < 0 || by < 0 || bx >= n || by >= n) continue
+            val mc = K.B_MAPCOL[b.t] ?: 0xffffff
+            val x0 = ox + bx * px; val y0 = oy + by * px
+            p.setColor(mcol(0x10141c))
+            c.drawRect(x0 - 0.06f * px, y0 - 0.06f * px, x0 + 1.06f * px, y0 + 1.06f * px, p)
+            p.setColor(mcol(mc))
+            c.drawRect(x0, y0, x0 + px, y0 + px, p)
+            p.setColor(mcol(shadeC(mc, 1.28f)))
+            c.drawRect(x0, y0, x0 + px, y0 + 0.34f * px, p)
+            p.setColor(mcol(shadeC(mc, 0.62f)))
+            c.drawRect(x0, y0 + 0.84f * px, x0 + px, y0 + px, p)
+        }
+        run {
+            val hbx = s.heart.tx - mapTx0; val hby = s.heart.ty - mapTy0
+            if (hbx >= -2 && hby >= -2 && hbx < n + 2 && hby < n + 2) {
+                val hx = ox + (hbx + 0.5f) * px; val hy = oy + (hby + 0.5f) * px
+                p.setColor(argb(60, 255, 215, 106)); c.drawCircle(hx, hy, 1.7f * px, p)
+                p.setColor(mcol(0x10141c)); c.drawCircle(hx, hy, 0.62f * px, p)
+                p.setColor(mcol(0xffd76a)); c.drawCircle(hx, hy, 0.5f * px, p)
+                p.setColor(mcol(0xfff2c8)); c.drawCircle(hx - 0.14f * px, hy - 0.14f * px, 0.16f * px, p)
+            }
+        }
+        for (m in s.minions) {
+            val mx0 = ox + (m.x / K.TS - mapTx0) * px; val my0 = oy + (m.y / K.TS - mapTy0) * px
+            p.setColor(mcol(0x10141c)); c.drawCircle(mx0, my0, 0.5f * px, p)
+            p.setColor(mcol(0x60c8ff)); c.drawCircle(mx0, my0, 0.36f * px, p)
+        }
+        for (sh in s.shadows) {
+            val sx0 = ox + (sh.x / K.TS - mapTx0) * px; val sy0 = oy + (sh.y / K.TS - mapTy0) * px
+            p.setColor(mcol(0x10141c)); c.drawCircle(sx0, sy0, 0.5f * px, p)
+            p.setColor(mcol(0xe14646)); c.drawCircle(sx0, sy0, 0.36f * px, p)
+        }
+        for (gh in Net.ghosts) {                          // çevrimiçi oyuncular
+            val gx0 = ox + (gh.x / K.TS - mapTx0) * px; val gy0 = oy + (gh.y / K.TS - mapTy0) * px
+            if (gx0 < ox || gy0 < oy || gx0 > ox + side || gy0 > oy + side) continue
+            p.setColor(mcol(0x10141c)); c.drawCircle(gx0, gy0, 0.56f * px, p)
+            p.setColor(mcol(0xd8e6f2)); c.drawCircle(gx0, gy0, 0.4f * px, p)
+        }
+        val plx = ox + (s.player.x / K.TS - mapTx0) * px
+        val ply = oy + (s.player.y / K.TS - mapTy0) * px
+        p.setColor(mcol(0x0a0c12)); c.drawCircle(plx, ply, 0.62f * px, p)
+        p.setColor(mcol(0xffffff)); c.drawCircle(plx, ply, 0.44f * px, p)
+        drawMapChrome(c, ox, oy, side, "Bölge · 256 m × 256 m · 1 karo = 4 m", "Dünya Haritası ▸")
+    }
+
+    private fun drawMapWorld(c: Canvas, s: GameState, ox: Float, oy: Float, side: Float) {
+        if (mapColsW == null) buildMapCacheW(s)
+        val cols = mapColsW ?: return
+        val n2 = MAPW_N
+        val px2 = side / n2
+        val step = (2 * K.WORLD_R).toFloat() / n2
+        var ty = 0
+        while (ty < n2) {
+            val yy = oy + ty * px2
+            var tx = 0
+            while (tx < n2) {
+                val c0 = cols[ty * n2 + tx]
+                var tx2 = tx + 1
+                while (tx2 < n2 && cols[ty * n2 + tx2] == c0) tx2++
+                if (c0 != -1) {
+                    p.setColor(mcol(c0))
+                    c.drawRect(ox + tx * px2, yy, ox + tx2 * px2, yy + px2 + 0.5f, p)
+                }
+                tx = tx2
+            }
+            ty++
+        }
+        fun wmx(wtx: Float) = ox + (wtx + K.WORLD_R) / step * px2
+        fun wmy(wty: Float) = oy + (wty + K.WORLD_R) / step * px2
+        for (b in s.builds.values) {
+            val bx = wmx(b.tx.toFloat()); val by = wmy(b.ty.toFloat())
+            p.setColor(mcol(0x10141c)); c.drawCircle(bx, by, 2.0f * px2, p)
+            p.setColor(mcol(K.B_MAPCOL[b.t] ?: 0xffffff)); c.drawCircle(bx, by, 1.4f * px2, p)
+        }
+        run {
+            val hx = wmx(s.heart.tx.toFloat()); val hy = wmy(s.heart.ty.toFloat())
+            p.setColor(argb(70, 255, 215, 106)); c.drawCircle(hx, hy, 5f * px2, p)
+            p.setColor(mcol(0x10141c)); c.drawCircle(hx, hy, 2.6f * px2, p)
+            p.setColor(mcol(0xffd76a)); c.drawCircle(hx, hy, 2.0f * px2, p)
+        }
+        for (gh in Net.ghosts) {
+            val gx = wmx(gh.x / K.TS); val gy = wmy(gh.y / K.TS)
+            p.setColor(mcol(0x10141c)); c.drawCircle(gx, gy, 2.0f * px2, p)
+            p.setColor(mcol(0xd8e6f2)); c.drawCircle(gx, gy, 1.4f * px2, p)
+        }
+        val plx = wmx(s.player.x / K.TS); val ply = wmy(s.player.y / K.TS)
+        p.setColor(mcol(0x0a0c12)); c.drawCircle(plx, ply, 2.6f * px2, p)
+        p.setColor(mcol(0xffffff)); c.drawCircle(plx, ply, 1.8f * px2, p)
+        drawMapChrome(c, ox, oy, side, "Dünya · çap 5.600 m · 50 oyuncu alanı", "◂ Bölge Haritası")
+    }
+
     private fun drawPause(c: Canvas) {
         btnRects.clear()
         p.setColor(argb(170, 5, 8, 14)); c.drawRect(0f, 0f, uw, uh, p)
@@ -1347,13 +1782,22 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
         panelBtn(c, uw / 2f, y, 300f, "DEVAM ET", 3, false); y += 72f
         panelBtn(c, uw / 2f, y, 300f, "KAYDET", 4, false); y += 72f
         panelBtn(c, uw / 2f, y, 300f, "ANA MENÜ", 5, true)
-        panelBtn(c, uw / 2f, y + 66f, 300f, "Yakınlık: " + arrayOf("Yakın", "Orta", "Uzak")[zoomMode], 6, false)
+        panelBtn(c, uw / 2f, y + 66f, 300f, "Ayarlar", 6, false)
+        panelBtn(c, uw / 2f, y + 128f, 300f, "HARİTA", 8, false)
     }
 
     /* ════════════ DOKUNUŞ ════════════ */
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         val act = ev.getActionMasked()
         if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
+            if (mode == M_MAP) {
+                val mi0 = ev.getActionIndex()
+                val mx0 = ev.getX(mi0); val my0 = ev.getY(mi0)
+                if (mx0 >= mtgL && mx0 <= mtgR && my0 >= mtgT && my0 <= mtgB)
+                    mapZoom = 1 - mapZoom
+                else mode = M_PLAY
+                snd.play("click"); return true
+            }
             val idx = ev.getActionIndex()
             val x = ev.getX(idx); val y = ev.getY(idx); val id = ev.getPointerId(idx)
             val ux = x / us; val uy = y / us              // UI sanal tuval koordinatı
@@ -1392,10 +1836,11 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
                 }
             }
             if (hit(ux, uy, uw - 44f, 44f, 36f)) { mode = M_PAUSE; snd.play("click"); return true }
-            if (hit(ux, uy, uw - 88f, uh - 124f, 64f)) { atkHeld = true; atkId = id; g.tapAttack(); return true }
-            if (hit(ux, uy, uw - 206f, uh - 98f, 50f)) { g.tapInteract(); return true }
-            if (hit(ux, uy, uw - 188f, uh - 212f, 46f)) { g.tapBuild(); snd.play("click"); return true }
-            if (x < vw * 0.55f && joyId == -1) {
+            if (hit(ux, uy, uw - 112f, 44f, 36f)) { mode = M_MAP; snd.play("click"); return true }
+            if (hit(ux, uy, axx(uw - 88f), uh - 124f, 64f)) { atkHeld = true; atkId = id; g.tapAttack(); return true }
+            if (hit(ux, uy, axx(uw - 206f), uh - 98f, 50f)) { g.tapInteract(); return true }
+            if (hit(ux, uy, axx(uw - 188f), uh - 212f, 46f)) { g.tapBuild(); snd.play("click"); return true }
+            if ((if (flipUI) x > vw * 0.45f else x < vw * 0.55f) && joyId == -1) {
                 joyId = id; joyOx = ux; joyOy = uy; joyVx = 0f; joyVy = 0f
             }
             return true
@@ -1406,10 +1851,10 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
                 if (i >= 0) {
                     var dx = ev.getX(i) / us - joyOx; var dy = ev.getY(i) / us - joyOy
                     val d = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-                    if (d < 66f * 0.18f) { joyVx = 0f; joyVy = 0f }   // ölü bölge
+                    if (d < jr() * 0.18f) { joyVx = 0f; joyVy = 0f }   // ölü bölge
                     else {
-                        val m = Math.min(d, 66f)
-                        joyVx = dx / d * (m / 66f); joyVy = dy / d * (m / 66f)
+                        val m = Math.min(d, jr())
+                        joyVx = dx / d * (m / jr()); joyVy = dy / d * (m / jr())
                     }
                 }
             }
@@ -1438,17 +1883,35 @@ class GameView(ctx: Context) : SurfaceView(ctx), SurfaceHolder.Callback, Runnabl
             if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
                 snd.play("click")
                 when (e.second) {
-                    1 -> newGame()
-                    2 -> continueGame()
+                    1 -> { mapCols = null; newGame() }
+                    2 -> { mapCols = null; continueGame() }
                     3 -> mode = M_PLAY
                     4 -> { saveNow(); toastQ.add(Tst("Oyun kaydedildi ✓", 0)) }
                     5 -> { saveNow(); game = null; mode = M_MENU }
-                    6 -> {
+                    6 -> mode = M_SET
+                    8 -> mode = M_MAP
+                    20 -> {
                         zoomMode = (zoomMode + 1) % 3
                         appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE)
                             .edit().putInt("zoom", zoomMode).apply()
                         applyZoom()
                     }
+                    21 -> {
+                        snd.muted = !snd.muted
+                        appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE)
+                            .edit().putInt("mute", if (snd.muted) 1 else 0).apply()
+                    }
+                    22 -> {
+                        joySz = (joySz + 1) % 3
+                        appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE)
+                            .edit().putInt("joy", joySz).apply()
+                    }
+                    23 -> {
+                        flipUI = !flipUI
+                        appCtx.getSharedPreferences("kk_ui", Context.MODE_PRIVATE)
+                            .edit().putInt("flip", if (flipUI) 1 else 0).apply()
+                    }
+                    25 -> mode = M_PAUSE
                 }
                 return
             }

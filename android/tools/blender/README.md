@@ -7,3 +7,8 @@ Kanıtlanmış akış (sandbox içinde Blender 4.0.2 headless ile üretildi):
 Yeni varlık = bu scripti kopyala, geometri/materyal bölümünü değiştir
 (kapı: kemer + ahşap kanat; burç: dik gövde; balista: platform + kollar).
 Işık/kamera/render blokları SABİT kalır — set tutarlılığı buradan gelir.
+
+## v3.0 — bl_set.py (7 varlıklı set)
+Tek koşu: palisat, kapı (kapalı/açık), burç, balista, çam, kaya.
+Işık/kamera rigi stonewall ile birebir → set tutarlılığı garantili.
+Varsa-atla korumalı: yarıda kesilirse aynı komutla kaldığı yerden sürer.

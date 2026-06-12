@@ -9,8 +9,8 @@ android {
         applicationId = "com.mk.kayipkrallik"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "2.4"
+        versionCode = 4
+        versionName = "4.4"
     }
     buildTypes {
         release { isMinifyEnabled = false }
