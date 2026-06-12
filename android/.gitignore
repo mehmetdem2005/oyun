@@ -1,0 +1,7 @@
+# Android/Gradle yapı çıktıları ve makineye özel ayarlar
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
